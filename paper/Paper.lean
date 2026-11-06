@@ -4,9 +4,10 @@ Inverse L-system inference, formalized (Lean 4.15 core, no Mathlib). No `sorry`.
 Master theorem, in two halves (both proved):
   infer_complete : every bounded solution in `sol` is emitted by the pruned search `infer`
   infer_sound    : every key emitted by `infer` is a bounded solution in `sol`
-both up to `canon` (rules of symbols that are never rewritten are irrelevant).
-`infer_sound` needs three side conditions discovered during the proof:
-  w ⊆ sigma, w ≠ [], 1 ≤ maxRule — each is a genuine discrepancy otherwise.
+both up to `canon` (rules of symbols that are never rewritten are irrelevant), with no
+side conditions: `infer` filters leaf candidates by `sigma`, never closes an empty axiom,
+and returns nothing when no legal rule body exists (earlier versions needed w ⊆ sigma,
+w ≠ [] and 1 ≤ maxRule as hypotheses; each was a genuine discrepancy).
 
 Also proved: existence (identity; one hidden symbol gives a length-1 axiom),
 impossibility over a one-letter alphabet, and the growth/length lemmas.
@@ -27,8 +28,9 @@ Problem A, the regime n > |Σ| = 2 (non-erasing, axiom shorter than w, w uses bo
   crit_of_insertion / insertion_of_crit : insertion words are exactly those meeting the
                             run-length criterion `Crit n x w` (inner x-runs ≥ n; leading
                             or trailing x-run ≥ n)
-  sharp_witness_fib / sharp_witness_dbl : T(n) is attained for n = 2..9 by the Fibonacci
-                            word and by a^(2^k) b^(2^k), which are solvable and fail `Crit`
+  sharp_witness           : T(n) is attained for every n ≥ 2 (Fibonacci iterate for n ≤ 7,
+                            a^(2^k) b^(2^k) for n ≥ 8), by words that are solvable, non-erasing,
+                            use both letters and fail `Crit` for both letters
 -/
 namespace LSys
 
@@ -239,19 +241,24 @@ def need [DecidableEq α] (R : Rules α) (allowEmpty : Bool) (n : Nat)
     (stack : List (Option α × Nat × Nat)) : Nat :=
   (stack.map (frameNeed R allowEmpty n)).sum
 
-/-- Extract the finished system: axiom from `none`, closed rules for `sigma`. -/
-def toKey [DecidableEq α] (sigma : List α) (R : Rules α) : Presented α :=
+/-- The rule body given to a symbol of `sigma` that the search never rewrote: the shortest
+legal body (`[a]`, or `[]` when rules of length 1 are not allowed). -/
+def defaultBody (B : Bounds) (a : α) : List α := if B.maxRule = 0 then [] else [a]
+
+/-- Extract the finished system: axiom from `none`; for every symbol of `sigma`, its closed
+body if it was rewritten, else the default body. -/
+def toKey [DecidableEq α] (sigma : List α) (B : Bounds) (R : Rules α) : Presented α :=
   ((lookupR R none).1.filterMap id,
-   sigma.filterMap fun a =>
-     let (body, closed) := lookupR R (some a)
-     if closed then some (a, body.filterMap id) else none)
+   sigma.map fun a =>
+     (a, let (body, closed) := lookupR R (some a)
+         if closed then body.filterMap id else defaultBody B a))
 
 def search [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B : Bounds) :
     Nat → St α → List (Presented α)
   | 0, _ => []
   | fuel + 1, st =>
     match st.stack with
-    | [] => if st.pos = w.length then [toKey sigma st.rules] else []
+    | [] => if st.pos = w.length then [toKey sigma B st.rules] else []
     | (sym, d, i) :: rest =>
       if w.length < st.pos + need st.rules B.allowEmpty n st.stack then [] else
       let (body, closed) := lookupR st.rules sym
@@ -266,14 +273,15 @@ def search [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B : Bound
       else if closed then search w n sigma B fuel ⟨st.rules, rest, st.pos⟩
       else
         let closeBr :=
-          if 1 ≤ body.length || B.allowEmpty then
+          if 1 ≤ body.length || (B.allowEmpty && sym.isSome) then
             search w n sigma B fuel ⟨(sym, (body, true)) :: st.rules, rest, st.pos⟩
           else []
         let maxlen := if sym = none then B.maxAxiom else B.maxRule
         let extBr :=
           if body.length < maxlen then
             let cands : List (Option α) :=
-              if d = n then (match w[st.pos]? with | some c => [some c] | none => [])
+              if d = n then
+                (match w[st.pos]? with | some c => if c ∈ sigma then [some c] else [] | none => [])
               else sigma.map some
             cands.flatMap fun c =>
               search w n sigma B fuel ⟨(sym, (body ++ [c], false)) :: st.rules, st.stack, st.pos⟩
@@ -282,7 +290,9 @@ def search [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B : Bound
 
 def infer [DecidableEq α] (sigma : List α) (B : Bounds) (w : List α) (n : Nat)
     (fuel : Nat := 1000000) : List (Presented α) :=
-  search w n sigma B fuel ⟨[], [(none, 0, 0)], 0⟩
+  if (if B.allowEmpty then 0 else 1) ≤ B.maxRule then
+    search w n sigma B fuel ⟨[], [(none, 0, 0)], 0⟩
+  else []
 
 /-! ### Iteration from an arbitrary string, and the key lower-bound lemma -/
 
@@ -608,16 +618,18 @@ def measure [DecidableEq α] (sigma : List α) (n : Nat) (T : DOL (Option α)) (
     + (stackLeaves T n st.stack).length + slack sigma T st.rules
 
 /-- The key the search must emit for the lifted system `T`. -/
-def expectedKey [DecidableEq α] (sigma : List α) (n : Nat) (T : DOL (Option α)) : Presented α :=
+def expectedKey [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (T : DOL (Option α)) :
+    Presented α :=
   ((T.rule none).filterMap id,
-   sigma.filterMap fun a =>
-     if some a ∈ usedT T n then some (a, (T.rule (some a)).filterMap id) else none)
+   sigma.map fun a =>
+     (a, if some a ∈ usedT T n then (T.rule (some a)).filterMap id else defaultBody B a))
 
 /-- What we know about a lifted bounded candidate. -/
 structure TOk [DecidableEq α] (sigma : List α) (B : Bounds) (T : DOL (Option α)) : Prop where
   mem : ∀ x ∈ allSyms sigma, ∀ y ∈ T.rule x, y ∈ sigma.map some
   len : ∀ x ∈ allSyms sigma, (T.rule x).length ≤ (if x = none then B.maxAxiom else B.maxRule)
   ne  : B.allowEmpty = false → ∀ x, T.rule x ≠ []
+  ne' : T.rule none ≠ []
 
 /-- The search-state invariant along the path of `T`. -/
 structure OnPath [DecidableEq α] (w : List α) (n : Nat) (T : DOL (Option α)) (st : St α) : Prop where
@@ -1039,9 +1051,9 @@ theorem step_extend [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (
 
 /-! #### Terminal state: the search emits exactly the expected key -/
 
-theorem terminal [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (T : DOL (Option α))
-    (R : Rules α) (pos : Nat) (hp : OnPath w n T ⟨R, [], pos⟩) :
-    pos = w.length ∧ toKey sigma R = expectedKey sigma n T := by
+theorem terminal [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B : Bounds)
+    (T : DOL (Option α)) (R : Rules α) (pos : Nat) (hp : OnPath w n T ⟨R, [], pos⟩) :
+    pos = w.length ∧ toKey sigma B R = expectedKey sigma B n T := by
   have hl := hp.leaves
   simp only [stackLeaves_nil] at hl
   have hpos : pos = w.length := by
@@ -1085,7 +1097,7 @@ theorem terminal [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (T :
 theorem search_complete [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B : Bounds)
     (T : DOL (Option α)) (hT : TOk sigma B T) :
     ∀ fuel (st : St α), OnPath w n T st → measure sigma n T st < fuel →
-      expectedKey sigma n T ∈ search w n sigma B fuel st := by
+      expectedKey sigma B n T ∈ search w n sigma B fuel st := by
   intro fuel
   induction fuel with
   | zero => intro st _ h; exact absurd h (Nat.not_lt_zero _)
@@ -1094,7 +1106,7 @@ theorem search_complete [DecidableEq α] (w : List α) (n : Nat) (sigma : List �
     rcases st with ⟨R, stack, pos⟩
     cases stack with
     | nil =>
-      obtain ⟨hpos, hkey⟩ := terminal w n sigma T R pos hp
+      obtain ⟨hpos, hkey⟩ := terminal w n sigma B T R pos hp
       simp only [search, hpos, if_true, hkey, List.mem_singleton]
     | cons f rest =>
       rcases f with ⟨sym, d, i⟩
@@ -1136,13 +1148,18 @@ theorem search_complete [DecidableEq α] (w : List α) (n : Nat) (sigma : List �
         | false =>
           rw [if_neg Bool.false_ne_true]
           by_cases hbr : body = T.rule sym
-          · have hcond : (decide (1 ≤ body.length) || B.allowEmpty) = true := by
+          · have hcond : (decide (1 ≤ body.length) || (B.allowEmpty && sym.isSome)) = true := by
               cases hae : B.allowEmpty
               · have hne := hT.ne hae sym
                 rw [← hbr] at hne
                 have := List.length_pos.mpr hne
                 simp; omega
-              · simp
+              · cases sym with
+                | none =>
+                  have hne : body ≠ [] := by rw [hbr]; exact hT.ne'
+                  have := List.length_pos.mpr hne
+                  simp; omega
+                | some a => simp
             simp only [hcond, if_true]
             apply List.mem_append_left
             obtain ⟨hp', hμ'⟩ := step_pop w n sigma T R ((sym, (body, true)) :: R) sym d i rest pos
@@ -1157,7 +1174,11 @@ theorem search_complete [DecidableEq α] (w : List α) (n : Nat) (sigma : List �
             by_cases hd : d = n
             · rw [if_pos hd]
               obtain ⟨c', hw, rfl⟩ := hdn hd
-              rw [hw]; simp
+              rw [hw]
+              have hc' : c' ∈ sigma := by
+                rw [List.mem_map] at hcs; obtain ⟨a, ha, hac⟩ := hcs
+                exact (Option.some.inj hac) ▸ ha
+              simp [hc']
             · rw [if_neg hd]; exact hcs
 
 /-! ### Canonical form (rules of unused symbols are irrelevant) -/
@@ -1175,7 +1196,7 @@ def canon [DecidableEq α] (sigma : List α) (n : Nat) (P : Presented α) : Pres
 
 theorem tok_of_bounded [DecidableEq α] (sigma : List α) (B : Bounds) (S : DOL α)
     (hS : Bounded sigma B S) : TOk sigma B (lift S) := by
-  refine ⟨?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_⟩
   · intro x hx y hy
     simp only [allSyms, List.mem_cons, List.mem_map] at hx
     rcases hx with rfl | ⟨a, ha, rfl⟩
@@ -1207,6 +1228,12 @@ theorem tok_of_bounded [DecidableEq α] (sigma : List α) (B : Bounds) (S : DOL 
       by_cases ha : a ∈ sigma
       · have := hS.rule_len_lo a ha; rw [hae] at this; simp at this; omega
       · rw [hS.rule_default a ha] at h1; simp at h1
+  · show S.start.map some ≠ []
+    intro h
+    have h1 := congrArg List.length h
+    simp only [List.length_map, List.length_nil] at h1
+    have := hS.start_len_lo
+    omega
 
 theorem initial_onPath [DecidableEq α] (w : List α) (n : Nat) (S : DOL α)
     (hw : S.derive n = w) : OnPath w n (lift S) ⟨[], [(none, 0, 0)], 0⟩ := by
@@ -1333,13 +1360,27 @@ theorem usedSymbols_eq_of_agree [DecidableEq α] (S K : DOL α) (n : Nat)
     simp only [usedSymbols]
     rw [h n (by omega), ih (fun j hj => h j (by omega))]
 
+theorem lookup_map_pair [DecidableEq α] (l : List α) (f : α → List α) (a : α) :
+    (l.map fun x => (x, f x)).lookup a = if a ∈ l then some (f a) else none := by
+  induction l with
+  | nil => simp
+  | cons b l ih =>
+    simp only [List.map_cons]
+    by_cases hab : a = b
+    · subst hab; simp [List.lookup]
+    · have : (a == b) = false := beq_false_of_ne hab
+      simp only [List.lookup, this, ih]
+      by_cases hal : a ∈ l
+      · simp [hal, hab]
+      · simp [hal, hab]
+
 /-- The expected key canonicalizes to the same thing as the candidate it came from. -/
 theorem canon_expectedKey [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat)
     (P : Presented α) (hB : Bounded sigma B P.toDOL) :
-    canon sigma n (expectedKey sigma n (lift P.toDOL)) = canon sigma n P := by
-  have hkey : expectedKey sigma n (lift P.toDOL)
-      = (P.1, sigma.filterMap fun a =>
-          if a ∈ usedSymbols P.toDOL n then some (a, P.toDOL.rule a) else none) := by
+    canon sigma n (expectedKey sigma B n (lift P.toDOL)) = canon sigma n P := by
+  have hkey : expectedKey sigma B n (lift P.toDOL)
+      = (P.1, sigma.map fun a =>
+          (a, if a ∈ usedSymbols P.toDOL n then P.toDOL.rule a else defaultBody B a)) := by
     unfold expectedKey
     have h1 : (lift P.toDOL).rule none = P.toDOL.start.map some := rfl
     have h2 : ∀ a, (lift P.toDOL).rule (some a) = (P.toDOL.rule a).map some := fun a => rfl
@@ -1350,23 +1391,17 @@ theorem canon_expectedKey [DecidableEq α] (sigma : List α) (B : Bounds) (n : N
     · rw [if_pos h, if_pos ((mem_usedT_lift_iff _ _ _).mpr h)]
     · rw [if_neg h, if_neg (fun h' => h ((mem_usedT_lift_iff _ _ _).mp h'))]
   rw [hkey]
-  generalize hK : Presented.toDOL (P.1, sigma.filterMap fun a =>
-        if a ∈ usedSymbols P.toDOL n then some (a, P.toDOL.rule a) else none) = K
+  generalize hK : Presented.toDOL (P.1, sigma.map fun a =>
+        (a, if a ∈ usedSymbols P.toDOL n then P.toDOL.rule a else defaultBody B a)) = K
   have toDOL_rule_mk : ∀ (ax : List α) (t : List (α × List α)) (a : α),
       (Presented.toDOL (ax, t)).rule a = match t.lookup a with | some r => r | none => [a] :=
     fun _ _ _ => rfl
   have hrule : ∀ a ∈ usedSymbols P.toDOL n, K.rule a = P.toDOL.rule a := by
     intro a ha
-    rw [← hK, toDOL_rule_mk]
+    rw [← hK, toDOL_rule_mk, lookup_map_pair]
     by_cases hs : a ∈ sigma
-    · have := lookup_filterMap_some sigma (fun x => x ∈ usedSymbols P.toDOL n)
-        (fun x => P.toDOL.rule x) a hs ha
-      simp only at this
-      rw [this]
-    · have := lookup_filterMap_none sigma (fun x => x ∈ usedSymbols P.toDOL n)
-        (fun x => P.toDOL.rule x) a hs
-      simp only at this
-      rw [this, hB.rule_default a hs]
+    · rw [if_pos hs]; simp only [if_pos ha]
+    · rw [if_neg hs, hB.rule_default a hs]
   have hst : K.start = P.toDOL.start := by rw [← hK]; rfl
   have hder := derive_eq_of_agree P.toDOL K n hst hrule
   have hused := usedSymbols_eq_of_agree P.toDOL K n hder
@@ -1390,7 +1425,25 @@ theorem sol_subset_infer [DecidableEq α] (sigma : List α) (B : Bounds) (w : Li
   have hT := tok_of_bounded sigma B P.toDOL hB
   have h0 := initial_onPath w n P.toDOL hw
   refine ⟨measure sigma n (lift P.toDOL) ⟨[], [(none, 0, 0)], 0⟩ + 1,
-    expectedKey sigma n (lift P.toDOL), ?_, canon_expectedKey sigma B n P hB⟩
+    expectedKey sigma B n (lift P.toDOL), ?_, canon_expectedKey sigma B n P hB⟩
+  -- the guard holds: some symbol of sigma has a legal rule body
+  have hguard : (if B.allowEmpty then 0 else 1) ≤ B.maxRule := by
+    cases hs : sigma with
+    | nil =>
+      -- no symbols at all: no axiom is possible, so `sol` is empty
+      exfalso
+      have := hB.start_len_lo
+      have hm := hB.start_mem
+      rw [hs] at hm
+      cases hst : P.toDOL.start with
+      | nil => rw [hst] at this; simp at this
+      | cons c _ => exact absurd (hm c (by rw [hst]; exact List.mem_cons_self _ _)) (by simp)
+    | cons a rest =>
+      have h1 := hB.rule_len_lo a (by rw [hs]; exact List.mem_cons_self _ _)
+      have h2 := hB.rule_len_hi a (by rw [hs]; exact List.mem_cons_self _ _)
+      omega
+  unfold infer
+  rw [if_pos hguard]
   exact search_complete w n sigma B (lift P.toDOL) hT _ _ h0 (Nat.lt_succ_self _)
 
 /-! ### Soundness: forward side-conditions, the final system, and the extension relation -/
@@ -1406,6 +1459,7 @@ structure Good [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (st : S
   depth      : ∀ f ∈ st.stack, f.2.1 ≤ n
   syms       : ∀ f ∈ st.stack, f.1 ∈ allSyms sigma
   entry_syms : ∀ x, lookupR st.rules x ≠ ([], false) → x ∈ allSyms sigma
+  axiom_ne   : (lookupR st.rules none).2 = true → (lookupR st.rules none).1 ≠ []
 
 /-- Properties of the final rule table. -/
 structure GoodF [DecidableEq α] (sigma : List α) (B : Bounds) (R : Rules α) : Prop where
@@ -1414,6 +1468,7 @@ structure GoodF [DecidableEq α] (sigma : List α) (B : Bounds) (R : Rules α) :
   closed_ne  : ∀ x, (lookupR R x).2 = true → B.allowEmpty = false → (lookupR R x).1 ≠ []
   open_nil   : ∀ x, (lookupR R x).2 = false → (lookupR R x).1 = []
   entry_syms : ∀ x, lookupR R x ≠ ([], false) → x ∈ allSyms sigma
+  axiom_ne   : (lookupR R none).2 = true → (lookupR R none).1 ≠ []
 
 theorem goodF_of_good [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R : Rules α)
     (pos : Nat) (hg : Good sigma B n ⟨R, [], pos⟩) : GoodF sigma B R :=
@@ -1423,12 +1478,14 @@ theorem goodF_of_good [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) 
      intro hne
      obtain ⟨f, hf, -⟩ := hg.open_frame x ho hne
      simp at hf,
-   hg.entry_syms⟩
+   hg.entry_syms, hg.axiom_ne⟩
 
-/-- The system read off a final rule table: closed bodies become rules, the rest is identity. -/
-def finalS [DecidableEq α] (R : Rules α) : DOL α :=
+/-- The system read off a final rule table: closed bodies become rules; symbols of `sigma`
+never rewritten get the default body; symbols outside `sigma` are fixed. -/
+def finalS [DecidableEq α] (sigma : List α) (B : Bounds) (R : Rules α) : DOL α :=
   ⟨(lookupR R none).1.filterMap id,
-   fun a => if (lookupR R (some a)).2 then (lookupR R (some a)).1.filterMap id else [a]⟩
+   fun a => if (lookupR R (some a)).2 then (lookupR R (some a)).1.filterMap id
+            else if a ∈ sigma then defaultBody B a else [a]⟩
 
 theorem map_some_filterMap_id (l : List (Option α)) (h : ∀ y ∈ l, ∃ a, y = some a) :
     (l.filterMap id).map some = l := by
@@ -1440,14 +1497,15 @@ theorem map_some_filterMap_id (l : List (Option α)) (h : ∀ y ∈ l, ∃ a, y 
 
 theorem lift_finalS_rule_closed [DecidableEq α] (sigma : List α) (B : Bounds) (R : Rules α)
     (hR : GoodF sigma B R) (x : Option α) (hx : (lookupR R x).2 = true) :
-    (lift (finalS R)).rule x = (lookupR R x).1 := by
+    (lift (finalS sigma B R)).rule x = (lookupR R x).1 := by
   have hb := hR.bodies x
   cases x with
   | none =>
     show ((lookupR R none).1.filterMap id).map some = _
     exact map_some_filterMap_id _ (fun y hy => let ⟨a, _, h⟩ := hb y hy; ⟨a, h⟩)
   | some a =>
-    show (if (lookupR R (some a)).2 = true then (lookupR R (some a)).1.filterMap id else [a]).map some = _
+    show (if (lookupR R (some a)).2 = true then (lookupR R (some a)).1.filterMap id
+          else if a ∈ sigma then defaultBody B a else [a]).map some = _
     rw [if_pos hx]
     exact map_some_filterMap_id _ (fun y hy => let ⟨a, _, h⟩ := hb y hy; ⟨a, h⟩)
 
@@ -1462,13 +1520,13 @@ theorem ext_refl [DecidableEq α] (R : Rules α) : Ext R R :=
 /-- Through an extension, the final system is consistent with the current table. -/
 theorem ext_closed_eq [DecidableEq α] (sigma : List α) (B : Bounds) (R Rf : Rules α)
     (hR : GoodF sigma B Rf) (he : Ext R Rf) (x : Option α) (hx : (lookupR R x).2 = true) :
-    (lookupR R x).1 = (lift (finalS Rf)).rule x := by
+    (lookupR R x).1 = (lift (finalS sigma B Rf)).rule x := by
   have h1 := (he x).1 hx
   rw [lift_finalS_rule_closed sigma B Rf hR x (by rw [h1]; exact hx), h1]
 
 theorem ext_prefix [DecidableEq α] (sigma : List α) (B : Bounds) (R Rf : Rules α)
     (hR : GoodF sigma B Rf) (he : Ext R Rf) (x : Option α) :
-    (lookupR R x).1 <+: (lift (finalS Rf)).rule x := by
+    (lookupR R x).1 <+: (lift (finalS sigma B Rf)).rule x := by
   have hp := (he x).2
   cases hc : (lookupR Rf x).2 with
   | true => rw [lift_finalS_rule_closed sigma B Rf hR x hc]; exact hp
@@ -1503,20 +1561,6 @@ theorem mem_ruleTables_of (sigma : List α) (bodies : List (List α)) (f : α �
     exact ⟨f c, hf c (List.mem_cons_self _ _), sigma.map (fun a => (a, f a)),
       ih (fun a ha => hf a (List.mem_cons_of_mem _ ha)), rfl⟩
 
-theorem lookup_map_pair [DecidableEq α] (l : List α) (f : α → List α) (a : α) :
-    (l.map fun x => (x, f x)).lookup a = if a ∈ l then some (f a) else none := by
-  induction l with
-  | nil => simp
-  | cons b l ih =>
-    simp only [List.map_cons]
-    by_cases hab : a = b
-    · subst hab; simp [List.lookup]
-    · have : (a == b) = false := beq_false_of_ne hab
-      simp only [List.lookup, this, ih]
-      by_cases hal : a ∈ l
-      · simp [hal, hab]
-      · simp [hal, hab]
-
 theorem DOL.ext' (S K : DOL α) (hs : S.start = K.start) (hr : ∀ a, S.rule a = K.rule a) : S = K := by
   cases S; cases K
   simp only at hs hr
@@ -1532,8 +1576,9 @@ theorem canon_congr [DecidableEq α] (sigma : List α) (n : Nat) (P Q : Presente
 
 /-! #### The backward invariant -/
 
-def Inv [DecidableEq α] (w : List α) (n : Nat) (st : St α) (Rf : Rules α) : Prop :=
-  stackLeaves (lift (finalS Rf)) n st.stack = (w.map some).drop st.pos ∧ Ext st.rules Rf
+def Inv [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B : Bounds) (st : St α)
+    (Rf : Rules α) : Prop :=
+  stackLeaves (lift (finalS sigma B Rf)) n st.stack = (w.map some).drop st.pos ∧ Ext st.rules Rf
 
 theorem drop_pos_eq (w : List α) (pos : Nat) (c : α) (h : w[pos]? = some c) :
     (w.map some).drop pos = some c :: (w.map some).drop (pos + 1) := by
@@ -1553,7 +1598,7 @@ theorem good_leaf [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R :
     (hg : Good sigma B n ⟨R, (sym, n, i) :: rest, pos⟩)
     (body : List (Option α)) (closed : Bool) (hb : lookupR R sym = (body, closed))
     (hi : i < body.length) : Good sigma B n ⟨R, (sym, n, i + 1) :: rest, pos + 1⟩ := by
-  refine ⟨hg.bodies, hg.len, hg.closed_ne, ?_, ?_, ?_, ?_, hg.entry_syms⟩
+  refine ⟨hg.bodies, hg.len, hg.closed_ne, ?_, ?_, ?_, ?_, hg.entry_syms, hg.axiom_ne⟩
   · intro x ho hne
     obtain ⟨f, hf, hfx⟩ := hg.open_frame x ho hne
     rcases List.mem_cons.mp hf with rfl | hf
@@ -1577,8 +1622,8 @@ theorem inv_leaf [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B :
     (sym : Option α) (i : Nat) (rest : List (Frame α)) (pos : Nat)
     (body : List (Option α)) (closed : Bool) (hb : lookupR R sym = (body, closed))
     (hi : i < body.length) (c : α) (hw : w[pos]? = some c) (hc : body[i] = some c)
-    (hinv : Inv w n ⟨R, (sym, n, i + 1) :: rest, pos + 1⟩ Rf) :
-    Inv w n ⟨R, (sym, n, i) :: rest, pos⟩ Rf := by
+    (hinv : Inv w n sigma B ⟨R, (sym, n, i + 1) :: rest, pos + 1⟩ Rf) :
+    Inv w n sigma B ⟨R, (sym, n, i) :: rest, pos⟩ Rf := by
   obtain ⟨hl, he⟩ := hinv
   refine ⟨?_, he⟩
   have hpre := ext_prefix sigma B R Rf hR he sym
@@ -1600,7 +1645,7 @@ theorem good_expand [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R
   simp only at hdn
   have hcb : body[i] ∈ (lookupR R sym).1 := by rw [hb]; exact List.getElem_mem hi
   obtain ⟨a, ha, hca⟩ := hg.bodies sym _ hcb
-  refine ⟨hg.bodies, hg.len, hg.closed_ne, ?_, ?_, ?_, ?_, hg.entry_syms⟩
+  refine ⟨hg.bodies, hg.len, hg.closed_ne, ?_, ?_, ?_, ?_, hg.entry_syms, hg.axiom_ne⟩
   · intro x ho hne
     obtain ⟨f, hf, hfx⟩ := hg.open_frame x ho hne
     rcases List.mem_cons.mp hf with rfl | hf
@@ -1631,8 +1676,8 @@ theorem inv_expand [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B
     (sym : Option α) (d i : Nat) (rest : List (Frame α)) (pos : Nat)
     (body : List (Option α)) (closed : Bool) (hb : lookupR R sym = (body, closed))
     (hi : i < body.length) (hd : d ≠ n) (hdn : d ≤ n)
-    (hinv : Inv w n ⟨R, (body[i], d + 1, 0) :: (sym, d, i + 1) :: rest, pos⟩ Rf) :
-    Inv w n ⟨R, (sym, d, i) :: rest, pos⟩ Rf := by
+    (hinv : Inv w n sigma B ⟨R, (body[i], d + 1, 0) :: (sym, d, i + 1) :: rest, pos⟩ Rf) :
+    Inv w n sigma B ⟨R, (sym, d, i) :: rest, pos⟩ Rf := by
   obtain ⟨hl, he⟩ := hinv
   refine ⟨?_, he⟩
   have hpre := ext_prefix sigma B R Rf hR he sym
@@ -1651,7 +1696,7 @@ theorem good_pop [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R R'
     (body : List (Option α)) (closed : Bool) (hb : lookupR R sym = (body, closed))
     (hself : lookupR R' sym = (body, true))
     (hother : ∀ y, y ≠ sym → lookupR R' y = lookupR R y)
-    (hne : B.allowEmpty = false → body ≠ []) :
+    (hne : B.allowEmpty = false → body ≠ []) (hax : sym = none → body ≠ []) :
     Good sigma B n ⟨R', rest, pos⟩ := by
   have hsym := hg.syms (sym, d, i) (List.mem_cons_self _ _)
   simp only at hsym
@@ -1660,7 +1705,7 @@ theorem good_pop [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R R'
     by_cases hx : x = sym
     · subst hx; rw [hself, hb]
     · rw [hother x hx]
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro x; rw [hlk]; exact hg.bodies x
   · intro x; rw [hlk]; exact hg.len x
   · intro x hc hae
@@ -1682,6 +1727,10 @@ theorem good_pop [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R R'
     by_cases hxs : x = sym
     · subst hxs; exact hsym
     · rw [hother x hxs] at hx; exact hg.entry_syms x hx
+  · intro hc
+    by_cases hxs : (none : Option α) = sym
+    · rw [← hxs] at hself; rw [hself]; exact hax hxs.symm
+    · rw [hother none hxs] at hc ⊢; exact hg.axiom_ne hc
 
 theorem inv_pop [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B : Bounds)
     (R R' Rf : Rules α) (hR : GoodF sigma B Rf)
@@ -1690,12 +1739,12 @@ theorem inv_pop [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B : 
     (hi : i = body.length)
     (hself : lookupR R' sym = (body, true))
     (hother : ∀ y, y ≠ sym → lookupR R' y = lookupR R y)
-    (hinv : Inv w n ⟨R', rest, pos⟩ Rf) :
-    Inv w n ⟨R, (sym, d, i) :: rest, pos⟩ Rf := by
+    (hinv : Inv w n sigma B ⟨R', rest, pos⟩ Rf) :
+    Inv w n sigma B ⟨R, (sym, d, i) :: rest, pos⟩ Rf := by
   obtain ⟨hl, he⟩ := hinv
   have hRf : lookupR Rf sym = (body, true) := by
     have := (he sym).1 (by rw [hself]); rwa [hself] at this
-  have hrule : (lift (finalS Rf)).rule sym = body := by
+  have hrule : (lift (finalS sigma B Rf)).rule sym = body := by
     rw [lift_finalS_rule_closed sigma B Rf hR sym (by rw [hRf]), hRf]
   constructor
   · simp only [stackLeaves_cons, frameLeaves_mk, hrule, hi, List.drop_length, iter_nil,
@@ -1721,7 +1770,7 @@ theorem good_extend [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R
     Good sigma B n ⟨(sym, (body ++ [some a], false)) :: R, (sym, d, i) :: rest, pos⟩ := by
   have hsym := hg.syms (sym, d, i) (List.mem_cons_self _ _)
   simp only at hsym
-  refine ⟨?_, ?_, ?_, ?_, ?_, hg.depth, hg.syms, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, hg.depth, hg.syms, ?_, ?_⟩
   · intro x y hy
     by_cases hx : x = sym
     · subst x
@@ -1752,13 +1801,17 @@ theorem good_extend [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R
     by_cases hxs : x = sym
     · subst hxs; exact hsym
     · rw [lookupR_cons_ne R sym x _ hxs] at hx; exact hg.entry_syms x hx
+  · intro hc
+    by_cases hxs : (none : Option α) = sym
+    · rw [← hxs, lookupR_cons_self] at hc; exact absurd hc (by simp)
+    · rw [lookupR_cons_ne R sym none _ hxs] at hc ⊢; exact hg.axiom_ne hc
 
-theorem inv_extend [DecidableEq α] (w : List α) (n : Nat)
+theorem inv_extend [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B : Bounds)
     (R Rf : Rules α)
     (sym : Option α) (d i : Nat) (rest : List (Frame α)) (pos : Nat)
     (body : List (Option α)) (hb : lookupR R sym = (body, false)) (c : Option α)
-    (hinv : Inv w n ⟨(sym, (body ++ [c], false)) :: R, (sym, d, i) :: rest, pos⟩ Rf) :
-    Inv w n ⟨R, (sym, d, i) :: rest, pos⟩ Rf := by
+    (hinv : Inv w n sigma B ⟨(sym, (body ++ [c], false)) :: R, (sym, d, i) :: rest, pos⟩ Rf) :
+    Inv w n sigma B ⟨R, (sym, d, i) :: rest, pos⟩ Rf := by
   obtain ⟨hl, he⟩ := hinv
   refine ⟨hl, ?_⟩
   intro x
@@ -1775,15 +1828,15 @@ theorem inv_extend [DecidableEq α] (w : List α) (n : Nat)
 
 /-! #### Terminal and initial states -/
 
-theorem inv_terminal [DecidableEq α] (w : List α) (n : Nat) (R : Rules α) :
-    Inv w n ⟨R, [], w.length⟩ R := by
+theorem inv_terminal [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B : Bounds)
+    (R : Rules α) : Inv w n sigma B ⟨R, [], w.length⟩ R := by
   refine ⟨?_, ext_refl R⟩
   simp only [stackLeaves_nil]
   rw [List.drop_eq_nil_of_le (by simp)]
 
 theorem good_init [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) :
     Good sigma B n ⟨[], [(none, 0, 0)], 0⟩ := by
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro x y hy; simp [lookupR] at hy
   · intro x; simp [lookupR]
   · intro x hc; simp [lookupR] at hc
@@ -1792,13 +1845,14 @@ theorem good_init [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) :
   · intro f hf; simp at hf; subst hf; exact Nat.zero_le _
   · intro f hf; simp at hf; subst hf; simp [allSyms]
   · intro x hx; simp [lookupR] at hx
+  · intro hc; simp [lookupR] at hc
 
 /-! #### The soundness theorem -/
 
-theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B : Bounds)
-    (hw : ∀ c ∈ w, c ∈ sigma) :
+theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B : Bounds) :
     ∀ fuel (st : St α), Good sigma B n st → ∀ Q ∈ search w n sigma B fuel st,
-      ∃ Rf, Q = toKey sigma Rf ∧ GoodF sigma B Rf ∧ Inv w n st Rf := by
+      ∃ Rf, Q = toKey sigma B Rf ∧ GoodF sigma B Rf ∧ Inv w n sigma B st Rf ∧
+        ∀ f ∈ st.stack, (lookupR Rf f.1).2 = true := by
   intro fuel
   induction fuel with
   | zero => intro st _ Q hQ; simp [search] at hQ
@@ -1813,7 +1867,7 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
         simp only [List.mem_singleton] at hQ
         subst hQ
         subst hpos
-        exact ⟨R, rfl, goodF_of_good sigma B n R _ hg, inv_terminal w n R⟩
+        exact ⟨R, rfl, goodF_of_good sigma B n R _ hg, inv_terminal w n sigma B R, by simp⟩
       · simp at hQ
     | cons f rest =>
       rcases f with ⟨sym, d, i⟩
@@ -1833,17 +1887,25 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
             simp only at hQ
             split at hQ
             · rename_i hc
-              obtain ⟨Rf, hQ', hRf, hinv⟩ :=
+              obtain ⟨Rf, hQ', hRf, hinv, hcl⟩ :=
                 ih _ (good_leaf sigma B d R sym i rest pos hg body closed hb hi) Q hQ
-              exact ⟨Rf, hQ', hRf,
-                inv_leaf w d sigma B R Rf hRf sym i rest pos body closed hb hi c hw' hc hinv⟩
+              refine ⟨Rf, hQ', hRf,
+                inv_leaf w d sigma B R Rf hRf sym i rest pos body closed hb hi c hw' hc hinv, ?_⟩
+              intro f hf
+              rcases List.mem_cons.mp hf with rfl | hf
+              · exact hcl (sym, d, i + 1) (List.mem_cons_self _ _)
+              · exact hcl f (List.mem_cons_of_mem _ hf)
             · simp at hQ
         · rw [if_neg hd] at hQ
-          obtain ⟨Rf, hQ', hRf, hinv⟩ :=
+          obtain ⟨Rf, hQ', hRf, hinv, hcl⟩ :=
             ih _ (good_expand sigma B n R sym d i rest pos hg body closed hb hi hd) Q hQ
           have hdn := hg.depth (sym, d, i) (List.mem_cons_self _ _)
-          exact ⟨Rf, hQ', hRf,
-            inv_expand w n sigma B R Rf hRf sym d i rest pos body closed hb hi hd hdn hinv⟩
+          refine ⟨Rf, hQ', hRf,
+            inv_expand w n sigma B R Rf hRf sym d i rest pos body closed hb hi hd hdn hinv, ?_⟩
+          intro f hf
+          rcases List.mem_cons.mp hf with rfl | hf
+          · exact hcl (sym, d, i + 1) (List.mem_cons_of_mem _ (List.mem_cons_self _ _))
+          · exact hcl f (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ hf))
       · rw [dif_neg hi] at hQ
         have hidx := hg.idx (sym, d, i) (List.mem_cons_self _ _)
         rw [hb] at hidx
@@ -1854,10 +1916,16 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
           rw [if_pos rfl] at hQ
           have hne : B.allowEmpty = false → body ≠ [] := fun hae => by
             have := hg.closed_ne sym (by rw [hb]) hae; rwa [hb] at this
-          obtain ⟨Rf, hQ', hRf, hinv⟩ :=
-            ih _ (good_pop sigma B n R R sym d i rest pos hg body true hb hb (fun y _ => rfl) hne) Q hQ
-          exact ⟨Rf, hQ', hRf,
-            inv_pop w n sigma B R R Rf hRf sym d i rest pos body true hb hi' hb (fun y _ => rfl) hinv⟩
+          have hax : sym = none → body ≠ [] := fun hs => by
+            subst hs; have := hg.axiom_ne (by rw [hb]); rwa [hb] at this
+          obtain ⟨Rf, hQ', hRf, hinv, hcl⟩ :=
+            ih _ (good_pop sigma B n R R sym d i rest pos hg body true hb hb (fun y _ => rfl) hne hax) Q hQ
+          refine ⟨Rf, hQ', hRf,
+            inv_pop w n sigma B R R Rf hRf sym d i rest pos body true hb hi' hb (fun y _ => rfl) hinv, ?_⟩
+          intro f hf
+          rcases List.mem_cons.mp hf with rfl | hf
+          · have := (hinv.2 sym).1 (by rw [hb]); rw [this, hb]
+          · exact hcl f hf
         | false =>
           rw [if_neg Bool.false_ne_true, List.mem_append] at hQ
           rcases hQ with hQ | hQ
@@ -1868,12 +1936,22 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
                 rw [hae] at hcond
                 simp at hcond
                 exact List.ne_nil_of_length_pos hcond
-              obtain ⟨Rf, hQ', hRf, hinv⟩ :=
+              have hax : sym = none → body ≠ [] := by
+                intro hs
+                subst hs
+                simp at hcond
+                exact List.ne_nil_of_length_pos hcond
+              obtain ⟨Rf, hQ', hRf, hinv, hcl⟩ :=
                 ih _ (good_pop sigma B n R _ sym d i rest pos hg body false hb
-                  (lookupR_cons_self R sym _) (fun y hy => lookupR_cons_ne R sym y _ hy) hne) Q hQ
-              exact ⟨Rf, hQ', hRf,
+                  (lookupR_cons_self R sym _) (fun y hy => lookupR_cons_ne R sym y _ hy) hne hax) Q hQ
+              refine ⟨Rf, hQ', hRf,
                 inv_pop w n sigma B R _ Rf hRf sym d i rest pos body false hb hi'
-                  (lookupR_cons_self R sym _) (fun y hy => lookupR_cons_ne R sym y _ hy) hinv⟩
+                  (lookupR_cons_self R sym _) (fun y hy => lookupR_cons_ne R sym y _ hy) hinv, ?_⟩
+              intro f hf
+              rcases List.mem_cons.mp hf with rfl | hf
+              · have := (hinv.2 sym).1 (by rw [lookupR_cons_self])
+                rw [this, lookupR_cons_self]
+              · exact hcl f hf
             · simp at hQ
           · by_cases hmax : body.length < (if sym = none then B.maxAxiom else B.maxRule)
             · rw [if_pos hmax, List.mem_flatMap] at hQ
@@ -1884,22 +1962,23 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
                   | none => rw [hw'] at hc; simp at hc
                   | some c' =>
                     rw [hw'] at hc
-                    simp at hc
-                    subst hc
-                    exact ⟨c', hw c' (List.mem_of_getElem? hw'), rfl⟩
+                    simp only at hc
+                    by_cases hcs : c' ∈ sigma
+                    · rw [if_pos hcs] at hc; simp at hc; exact ⟨c', hcs, hc⟩
+                    · rw [if_neg hcs] at hc; simp at hc
                 · rw [List.mem_map] at hc
                   obtain ⟨a, ha, rfl⟩ := hc
                   exact ⟨a, ha, rfl⟩
               obtain ⟨a, ha, rfl⟩ := hca
-              obtain ⟨Rf, hQ', hRf, hinv⟩ :=
+              obtain ⟨Rf, hQ', hRf, hinv, hcl⟩ :=
                 ih _ (good_extend sigma B n R sym d i rest pos hg body hb a ha (by omega)) Q hQ
-              exact ⟨Rf, hQ', hRf, inv_extend w n R Rf sym d i rest pos body hb (some a) hinv⟩
+              exact ⟨Rf, hQ', hRf, inv_extend w n sigma B R Rf sym d i rest pos body hb (some a) hinv, hcl⟩
             · rw [if_neg hmax] at hQ; simp at hQ
 
 /-! ### Master theorem
 
-`infer` and `sol` agree up to rules of unused symbols. Completeness is proved;
-soundness (every emitted key comes from a bounded solution) is the remaining goal. -/
+`infer` and `sol` agree up to rules of unused symbols: completeness here, soundness
+(`infer_sound`, no side conditions) after the backward invariant below. -/
 
 /-- **Completeness** (proved): every bounded solution is found by the search. -/
 theorem infer_complete [DecidableEq α] (sigma : List α) (B : Bounds) (w : List α) (n : Nat) :
@@ -1909,35 +1988,15 @@ theorem infer_complete [DecidableEq α] (sigma : List α) (B : Bounds) (w : List
 
 /-! #### Assembling `infer_sound` -/
 
-theorem lookup_filterMap_none' [DecidableEq α] (l : List α) (p : α → Prop) [DecidablePred p]
-    (g : α → List α) (a : α) (hp : ¬ p a) :
-    (l.filterMap fun x => if p x then some (x, g x) else none).lookup a = none := by
-  induction l with
-  | nil => rfl
-  | cons b l ih =>
-    simp only [List.filterMap_cons]
-    by_cases hb : p b
-    · rw [if_pos hb]
-      have hab : a ≠ b := fun h => hp (h ▸ hb)
-      have := beq_false_of_ne hab
-      simp only [List.lookup, this]; exact ih
-    · rw [if_neg hb]; exact ih
-
-theorem toKey_snd [DecidableEq α] (sigma : List α) (R : Rules α) :
-    (toKey sigma R).2 = sigma.filterMap fun a =>
-      if (lookupR R (some a)).2 = true then some (a, (lookupR R (some a)).1.filterMap id) else none := by
-  unfold toKey
-  simp only
-
 theorem length_filterMap_id_of_some (l : List (Option α)) (h : ∀ y ∈ l, ∃ a, y = some a) :
     (l.filterMap id).length = l.length := by
   have := congrArg List.length (map_some_filterMap_id l h)
   rwa [List.length_map] at this
 
-/-- The system read off the final table is bounded, and has the identity on symbols outside `sigma`. -/
+/-- The system read off the final table is bounded, given a legal rule body exists. -/
 theorem finalS_bounded [DecidableEq α] (sigma : List α) (B : Bounds) (Rf : Rules α)
-    (hR : GoodF sigma B Rf) (hmr : 1 ≤ B.maxRule) (hne : (finalS Rf).start ≠ []) :
-    Bounded sigma B (finalS Rf) := by
+    (hR : GoodF sigma B Rf) (hguard : (if B.allowEmpty then 0 else 1) ≤ B.maxRule)
+    (hne : (finalS sigma B Rf).start ≠ []) : Bounded sigma B (finalS sigma B Rf) := by
   have hsome : ∀ x, ∀ y ∈ (lookupR Rf x).1, ∃ a, y = some a :=
     fun x y hy => let ⟨a, _, h⟩ := hR.bodies x y hy; ⟨a, h⟩
   have hmemS : ∀ x, ∀ a ∈ (lookupR Rf x).1.filterMap id, a ∈ sigma := by
@@ -1958,115 +2017,109 @@ theorem finalS_bounded [DecidableEq α] (sigma : List α) (B : Bounds) (Rf : Rul
       rcases this with h | ⟨b, hb, hab⟩
       · exact Option.noConfusion h
       · exact ha (Option.some.inj hab ▸ hb)
+  have hrule : ∀ a, (finalS sigma B Rf).rule a
+      = if (lookupR Rf (some a)).2 = true then (lookupR Rf (some a)).1.filterMap id
+        else if a ∈ sigma then defaultBody B a else [a] := fun a => rfl
   refine ⟨?_, ?_, hmemS none, ?_, ?_, ?_, ?_⟩
   · exact List.length_pos.mpr hne
   · show ((lookupR Rf none).1.filterMap id).length ≤ B.maxAxiom
     rw [length_filterMap_id_of_some _ (hsome none)]
     simpa using hR.len none
   · intro a ha
-    show (if B.allowEmpty then 0 else 1) ≤ (if (lookupR Rf (some a)).2 = true
-        then (lookupR Rf (some a)).1.filterMap id else [a]).length
+    rw [hrule]
     cases hc : (lookupR Rf (some a)).2
-    · rw [if_neg Bool.false_ne_true]; simp only [List.length_singleton]; split <;> omega
-    · rw [if_pos rfl]
-      rw [length_filterMap_id_of_some _ (hsome _)]
+    · rw [if_neg Bool.false_ne_true, if_pos ha]
+      unfold defaultBody
+      by_cases h0 : B.maxRule = 0
+      · rw [if_pos h0]; simp only [List.length_nil]; rw [h0] at hguard; exact hguard
+      · rw [if_neg h0]; simp only [List.length_singleton]; split <;> omega
+    · rw [if_pos rfl, length_filterMap_id_of_some _ (hsome _)]
       cases hae : B.allowEmpty
       · rw [if_neg Bool.false_ne_true]
         exact List.length_pos.mpr (hR.closed_ne _ hc hae)
       · rw [if_pos rfl]; exact Nat.zero_le _
   · intro a ha
-    show (if (lookupR Rf (some a)).2 = true
-        then (lookupR Rf (some a)).1.filterMap id else [a]).length ≤ B.maxRule
+    rw [hrule]
     cases hc : (lookupR Rf (some a)).2
-    · rw [if_neg Bool.false_ne_true]; simpa using hmr
-    · rw [if_pos rfl]
-      rw [length_filterMap_id_of_some _ (hsome _)]
+    · rw [if_neg Bool.false_ne_true, if_pos ha]
+      unfold defaultBody
+      by_cases h0 : B.maxRule = 0
+      · rw [if_pos h0]; simp
+      · rw [if_neg h0]; simp only [List.length_singleton]; omega
+    · rw [if_pos rfl, length_filterMap_id_of_some _ (hsome _)]
       simpa using hR.len (some a)
   · intro a ha x hx
-    have hx' : x ∈ (if (lookupR Rf (some a)).2 = true
-        then (lookupR Rf (some a)).1.filterMap id else [a]) := hx
+    rw [hrule] at hx
     cases hc : (lookupR Rf (some a)).2
-    · rw [hc, if_neg Bool.false_ne_true] at hx'; simp at hx'; subst hx'; exact ha
-    · rw [hc, if_pos rfl] at hx'; exact hmemS _ x hx'
+    · rw [hc, if_neg Bool.false_ne_true, if_pos ha] at hx
+      unfold defaultBody at hx
+      by_cases h0 : B.maxRule = 0
+      · rw [if_pos h0] at hx; simp at hx
+      · rw [if_neg h0] at hx; simp at hx; subst hx; exact ha
+    · rw [hc, if_pos rfl] at hx; exact hmemS _ x hx
   · intro a ha
-    show (if (lookupR Rf (some a)).2 = true
-        then (lookupR Rf (some a)).1.filterMap id else [a]) = [a]
-    rw [hclosed_not_mem a ha]; rfl
+    rw [hrule, hclosed_not_mem a ha, if_neg Bool.false_ne_true, if_neg ha]
 
-/-- **Soundness** (proved): every emitted key is, up to unused rules, a bounded solution. -/
-theorem infer_sound [DecidableEq α] (sigma : List α) (B : Bounds) (w : List α) (n : Nat)
-    (hw : ∀ c ∈ w, c ∈ sigma) (hne : w ≠ []) (hmr : 1 ≤ B.maxRule) :
+/-- The emitted key is literally the presentation of `finalS`. -/
+theorem toKey_eq [DecidableEq α] (sigma : List α) (B : Bounds) (Rf : Rules α) :
+    toKey sigma B Rf = ((finalS sigma B Rf).start, sigma.map fun a => (a, (finalS sigma B Rf).rule a)) := by
+  unfold toKey finalS
+  simp only
+  congr 1
+  apply List.map_congr_left
+  intro a ha
+  rcases h : lookupR Rf (some a) with ⟨b, c⟩
+  simp only [if_pos ha]
+
+/-- **Soundness** (proved, no side conditions): every emitted key is a bounded solution. -/
+theorem infer_sound [DecidableEq α] (sigma : List α) (B : Bounds) (w : List α) (n : Nat) :
     ∀ fuel, ∀ Q ∈ infer sigma B w n fuel, ∃ P ∈ sol sigma B w n,
       canon sigma n Q = canon sigma n P := by
   intro fuel Q hQ
-  obtain ⟨Rf, hQk, hRf, hleaves, -⟩ :=
-    search_sound w n sigma B hw fuel _ (good_init sigma B n) Q hQ
-  -- the induced system derives w
-  have hder : (finalS Rf).derive n = w := by
-    simp only [stackLeaves_cons, stackLeaves_nil, frameLeaves_mk, Nat.sub_zero, List.drop_zero,
-      List.append_nil] at hleaves
-    have h1 : (lift (finalS Rf)).rule none = (finalS Rf).start.map some := rfl
-    rw [h1, iter_lift_map, ← derive_eq_iter] at hleaves
-    have := congrArg (List.filterMap id) hleaves
-    rwa [filterMap_id_map_some, filterMap_id_map_some] at this
-  have hstart : (finalS Rf).start ≠ [] := by
-    intro h0
-    apply hne
-    rw [← hder, derive_eq_iter, h0, iter_nil]
-  have hB := finalS_bounded sigma B Rf hRf hmr hstart
-  -- the presented solution
-  let P : Presented α := ((finalS Rf).start, sigma.map fun a => (a, (finalS Rf).rule a))
-  have hPD : P.toDOL = finalS Rf := by
-    refine DOL.ext' _ _ rfl ?_
-    intro a
-    show (match (sigma.map fun a => (a, (finalS Rf).rule a)).lookup a with
-      | some r => r | none => [a]) = (finalS Rf).rule a
-    rw [lookup_map_pair]
-    by_cases ha : a ∈ sigma
-    · rw [if_pos ha]
-    · rw [if_neg ha]; exact (hB.rule_default a ha).symm
-  have hPA : P ∈ allSystems sigma B := by
+  unfold infer at hQ
+  by_cases hguard : (if B.allowEmpty then 0 else 1) ≤ B.maxRule
+  · rw [if_pos hguard] at hQ
+    obtain ⟨Rf, hQk, hRf, ⟨hleaves, -⟩, hcl⟩ :=
+      search_sound w n sigma B fuel _ (good_init sigma B n) Q hQ
+    have hder : (finalS sigma B Rf).derive n = w := by
+      simp only [stackLeaves_cons, stackLeaves_nil, frameLeaves_mk, Nat.sub_zero, List.drop_zero,
+        List.append_nil] at hleaves
+      have h1 : (lift (finalS sigma B Rf)).rule none = (finalS sigma B Rf).start.map some := rfl
+      rw [h1, iter_lift_map, ← derive_eq_iter] at hleaves
+      have := congrArg (List.filterMap id) hleaves
+      rwa [filterMap_id_map_some, filterMap_id_map_some] at this
+    have hstart : (finalS sigma B Rf).start ≠ [] := by
+      have hc := hcl (none, 0, 0) (List.mem_cons_self _ _)
+      have := hRf.axiom_ne hc
+      show (lookupR Rf none).1.filterMap id ≠ []
+      intro h0
+      apply this
+      have := congrArg (List.map some) h0
+      rwa [map_some_filterMap_id _ (fun y hy => let ⟨a, _, h⟩ := hRf.bodies none y hy; ⟨a, h⟩)] at this
+    have hB := finalS_bounded sigma B Rf hRf hguard hstart
+    refine ⟨Q, ?_, rfl⟩
+    rw [hQk, toKey_eq]
+    have hPD : Presented.toDOL ((finalS sigma B Rf).start, sigma.map fun a => (a, (finalS sigma B Rf).rule a))
+        = finalS sigma B Rf := by
+      refine DOL.ext' _ _ rfl ?_
+      intro a
+      show (match (sigma.map fun a => (a, (finalS sigma B Rf).rule a)).lookup a with
+        | some r => r | none => [a]) = (finalS sigma B Rf).rule a
+      rw [lookup_map_pair]
+      by_cases ha : a ∈ sigma
+      · rw [if_pos ha]
+      · rw [if_neg ha]; exact (hB.rule_default a ha).symm
+    unfold sol
+    rw [List.mem_filter]
+    refine ⟨?_, decide_eq_true (by rw [hPD]; exact hder)⟩
     simp only [allSystems, List.mem_flatMap, List.mem_map]
-    refine ⟨(finalS Rf).start, ?_, sigma.map fun a => (a, (finalS Rf).rule a), ?_, rfl⟩
+    refine ⟨(finalS sigma B Rf).start, ?_, sigma.map fun a => (a, (finalS sigma B Rf).rule a), ?_, rfl⟩
     · exact mem_wordsUpTo_of sigma 1 B.maxAxiom _ hB.start_len_lo hB.start_len_hi hB.start_mem
     · apply mem_ruleTables_of
       intro a ha
       exact mem_wordsUpTo_of sigma _ B.maxRule _ (hB.rule_len_lo a ha) (hB.rule_len_hi a ha)
         (hB.rule_mem a ha)
-  have hPsol : P ∈ sol sigma B w n := by
-    unfold sol
-    rw [List.mem_filter]
-    exact ⟨hPA, decide_eq_true (by rw [hPD]; exact hder)⟩
-  refine ⟨P, hPsol, ?_⟩
-  -- Q and P induce the same system
-  have hQD : Q.toDOL = finalS Rf := by
-    subst hQk
-    refine DOL.ext' _ _ rfl ?_
-    intro a
-    show (match (toKey sigma Rf).2.lookup a with | some r => r | none => [a]) = (finalS Rf).rule a
-    rw [toKey_snd]
-    by_cases ha : a ∈ sigma
-    · cases hc : (lookupR Rf (some a)).2
-      · have := lookup_filterMap_none' sigma (fun x => (lookupR Rf (some x)).2 = true)
-          (fun x => (lookupR Rf (some x)).1.filterMap id) a (by simp [hc])
-        simp only at this
-        rw [this]
-        show [a] = (if (lookupR Rf (some a)).2 = true then _ else [a])
-        rw [hc]; rfl
-      · have := lookup_filterMap_some sigma (fun x => (lookupR Rf (some x)).2 = true)
-          (fun x => (lookupR Rf (some x)).1.filterMap id) a ha hc
-        simp only at this
-        rw [this]
-        show _ = (if (lookupR Rf (some a)).2 = true then _ else [a])
-        rw [hc]; rfl
-    · have := lookup_filterMap_none sigma (fun x => (lookupR Rf (some x)).2 = true)
-        (fun x => (lookupR Rf (some x)).1.filterMap id) a ha
-      simp only at this
-      rw [this]
-      exact (hB.rule_default a ha).symm
-  apply canon_congr
-  · subst hQk; rfl
-  · rw [hQD, hPD]
+  · rw [if_neg hguard] at hQ; simp at hQ
 
 /-! ### Problem A: which `(w, n)` admit a non-trivial system over Σ(w)?
 
@@ -3421,6 +3474,388 @@ theorem sharp_witness_dbl :
       dblS.start.length < (dblS.derive n).length ∧
       ¬ Crit n false (dblS.derive n) ∧ ¬ Crit n true (dblS.derive n) := by decide
 
+/-! ### Sharpness for every `n`
+
+For `n ≥ 2` some word of length exactly `T(n)` is derivable (non-erasing, short axiom, both
+letters) and fails both criteria: the Fibonacci iterate for `n ≤ 7`, the doubling word for `n ≥ 8`. -/
+
+/-! #### Crit forces a long run, hence a long factor -/
+
+theorem getLastD_mem (l : List Nat) (d : Nat) (h : l ≠ []) : l.getLastD d ∈ l := by
+  induction l generalizing d with
+  | nil => exact absurd rfl h
+  | cons a t ih =>
+    cases t with
+    | nil => simp
+    | cons b t' => rw [List.getLastD_cons]; exact List.mem_cons_of_mem _ (ih a (by simp))
+
+theorem headD_mem (l : List Nat) (d : Nat) (h : l ≠ []) : l.headD d ∈ l := by
+  cases l with
+  | nil => exact absurd rfl h
+  | cons a t => simp
+
+theorem crit_imp_run (n : Nat) (x : Bool) (w : List Bool) (hc : Crit n x w) :
+    ∃ r ∈ runs x w, n ≤ r := by
+  obtain ⟨-, -, h⟩ := hc
+  rcases h with h | h
+  · exact ⟨_, headD_mem _ _ (runs_ne_nil x w), h⟩
+  · exact ⟨_, getLastD_mem _ _ (runs_ne_nil x w), h⟩
+
+theorem fromRuns_factor (x : Bool) (rs : List Nat) (r : Nat) (hr : r ∈ rs) :
+    ∃ u v, fromRuns x rs = u ++ List.replicate r x ++ v := by
+  induction rs with
+  | nil => simp at hr
+  | cons r0 rs ih =>
+    cases rs with
+    | nil => simp at hr; subst hr; exact ⟨[], [], by simp [fromRuns]⟩
+    | cons r1 rest =>
+      rcases List.mem_cons.mp hr with rfl | hr'
+      · exact ⟨[], (!x) :: fromRuns x (r1 :: rest), by simp [fromRuns]⟩
+      · obtain ⟨u, v, huv⟩ := ih hr'
+        exact ⟨List.replicate r0 x ++ (!x) :: u, v, by simp [fromRuns, huv]⟩
+
+theorem crit_imp_factor (n : Nat) (x : Bool) (w : List Bool) (hc : Crit n x w) :
+    ∃ u v, w = u ++ List.replicate n x ++ v := by
+  obtain ⟨r, hr, hnr⟩ := crit_imp_run n x w hc
+  obtain ⟨u, v, huv⟩ := fromRuns_factor x (runs x w) r hr
+  rw [fromRuns_runs] at huv
+  refine ⟨u, List.replicate (r - n) x ++ v, ?_⟩
+  have e : List.replicate r x = List.replicate n x ++ List.replicate (r - n) x := by
+    rw [List.append_replicate_replicate]; congr 1; omega
+  rw [huv, e, List.append_assoc, List.append_assoc, List.append_assoc]
+
+/-! #### the Fibonacci iterates avoid `bb` and `aaa` -/
+
+def nobb : List Bool → Bool
+  | true :: true :: _ => false
+  | _ :: t => nobb t
+  | [] => true
+
+def noaaa : List Bool → Bool
+  | false :: false :: false :: _ => false
+  | _ :: t => noaaa t
+  | [] => true
+
+theorem nobb_cons (c : Bool) (t : List Bool) : nobb (c :: t) = true →
+    nobb t = true := by
+  cases c <;> cases t with
+  | nil => simp [nobb]
+  | cons d t' => cases d <;> simp [nobb]
+
+theorem noaaa_cons (c : Bool) (t : List Bool) : noaaa (c :: t) = true → noaaa t = true := by
+  cases c <;> cases t with
+  | nil => simp [noaaa]
+  | cons d t' =>
+    cases d <;> cases t' with
+    | nil => simp [noaaa]
+    | cons e t'' => cases e <;> simp [noaaa]
+
+theorem nobb_factor (u v : List Bool) : nobb (u ++ [true, true] ++ v) = false := by
+  induction u with
+  | nil => rfl
+  | cons c u ih =>
+    rw [List.cons_append, List.cons_append]
+    cases h : nobb (c :: (u ++ [true, true] ++ v))
+    · rfl
+    · have := nobb_cons c _ h; rw [ih] at this; exact absurd this Bool.false_ne_true
+
+theorem noaaa_factor (u v : List Bool) : noaaa (u ++ [false, false, false] ++ v) = false := by
+  induction u with
+  | nil => rfl
+  | cons c u ih =>
+    rw [List.cons_append, List.cons_append]
+    cases h : noaaa (c :: (u ++ [false, false, false] ++ v))
+    · rfl
+    · have := noaaa_cons c _ h; rw [ih] at this; exact absurd this Bool.false_ne_true
+
+/-- Every nonempty Fibonacci step starts with `a`. -/
+theorem fib_step_head (t : List Bool) (ht : t ≠ []) : ∃ r, fibS.step t = false :: r := by
+  cases t with
+  | nil => exact absurd rfl ht
+  | cons c t' =>
+    cases c
+    · exact ⟨true :: fibS.step t', rfl⟩
+    · exact ⟨fibS.step t', rfl⟩
+
+theorem fib_step_nobb_noaaa (w : List Bool) (h : nobb w = true) :
+    nobb (fibS.step w) = true ∧ noaaa (fibS.step w) = true := by
+  induction w with
+  | nil => exact ⟨rfl, rfl⟩
+  | cons c t ih =>
+    obtain ⟨ih1, ih2⟩ := ih (nobb_cons c t h)
+    cases c
+    · -- a ↦ ab
+      show nobb (false :: true :: fibS.step t) = true ∧ noaaa (false :: true :: fibS.step t) = true
+      cases ht : t with
+      | nil => exact ⟨rfl, rfl⟩
+      | cons d t' =>
+        obtain ⟨r, hr⟩ := fib_step_head (d :: t') (by simp)
+        rw [← ht] at hr ⊢
+        rw [hr] at ih1 ih2 ⊢
+        exact ⟨by simpa [nobb] using ih1, by simpa [noaaa] using ih2⟩
+    · -- b ↦ a
+      show nobb (false :: fibS.step t) = true ∧ noaaa (false :: fibS.step t) = true
+      cases ht : t with
+      | nil => exact ⟨rfl, rfl⟩
+      | cons d t' =>
+        cases d
+        · -- t = a :: t' ; step t = a :: b :: step t'
+          have e : fibS.step (false :: t') = false :: true :: fibS.step t' := rfl
+          rw [← ht] at e ⊢
+          rw [e] at ih1 ih2 ⊢
+          exact ⟨by simpa [nobb] using ih1, by simpa [noaaa] using ih2⟩
+        · -- t = b :: t' contradicts nobb (b :: b :: t')
+          subst ht; simp [nobb] at h
+
+theorem fib_derive_nobb_noaaa (n : Nat) :
+    nobb (fibS.derive n) = true ∧ noaaa (fibS.derive n) = true := by
+  induction n with
+  | zero => exact ⟨rfl, rfl⟩
+  | succ n ih => exact fib_step_nobb_noaaa _ ih.1
+
+theorem fib_not_crit (n : Nat) (hn : 3 ≤ n) (x : Bool) : ¬ Crit n x (fibS.derive n) := by
+  intro hc
+  obtain ⟨u, v, huv⟩ := crit_imp_factor n x _ hc
+  obtain ⟨h1, h2⟩ := fib_derive_nobb_noaaa n
+  cases x
+  · -- a^n with n ≥ 3 contains aaa
+    have e : List.replicate n false = [false, false, false] ++ List.replicate (n - 3) false := by
+      show List.replicate n false = List.replicate 3 false ++ List.replicate (n - 3) false
+      rw [List.append_replicate_replicate]; congr 1; omega
+    have : fibS.derive n = u ++ [false, false, false] ++ (List.replicate (n - 3) false ++ v) := by
+      rw [huv, e]; simp [List.append_assoc]
+    rw [this, noaaa_factor] at h2; exact Bool.noConfusion h2
+  · have e : List.replicate n true = [true, true] ++ List.replicate (n - 2) true := by
+      show List.replicate n true = List.replicate 2 true ++ List.replicate (n - 2) true
+      rw [List.append_replicate_replicate]; congr 1; omega
+    have : fibS.derive n = u ++ [true, true] ++ (List.replicate (n - 2) true ++ v) := by
+      rw [huv, e]; simp [List.append_assoc]
+    rw [this, nobb_factor] at h1; exact Bool.noConfusion h1
+
+/-! #### Fibonacci lengths and letters -/
+
+theorem fib_counts (n : Nat) :
+    (fibS.derive (n + 1)).count false = fib (n + 1) ∧ (fibS.derive (n + 1)).count true = fib n := by
+  induction n with
+  | zero => exact ⟨rfl, rfl⟩
+  | succ n ih =>
+    obtain ⟨ih1, ih2⟩ := ih
+    show (fibS.step (fibS.derive (n + 1))).count false = _ ∧
+         (fibS.step (fibS.derive (n + 1))).count true = _
+    rw [count_step_bool fibS false false, count_step_bool fibS false true]
+    simp only [Bool.not_false]
+    have r1 : fibS.rule false = [false, true] := rfl
+    have r2 : fibS.rule true = [false] := rfl
+    rw [r1, r2, ih1, ih2]
+    simp [List.count_cons, fib_succ_succ]
+    omega
+
+theorem fib_length (n : Nat) : (fibS.derive n).length = fib (n + 1) := by
+  cases n with
+  | zero => rfl
+  | succ m =>
+    obtain ⟨h1, h2⟩ := fib_counts m
+    have := count_add_count_not false (fibS.derive (m + 1))
+    simp only [Bool.not_false] at this
+    rw [← this, h1, h2, fib_succ_succ, Nat.add_comm]
+
+theorem fib_both (n : Nat) (hn : 2 ≤ n) : ∀ c, c ∈ fibS.derive n := by
+  obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 := ⟨n - 1, by omega⟩
+  obtain ⟨h1, h2⟩ := fib_counts m
+  intro c
+  have hpos : ∀ k, 1 ≤ k → 1 ≤ fib k := by
+    intro k hk; induction k with
+    | zero => omega
+    | succ k ih =>
+      cases k with
+      | zero => decide
+      | succ k => rw [fib_succ_succ]; have := ih (by omega); omega
+  cases c
+  · exact List.count_pos_iff.mp (by rw [h1]; exact hpos _ (by omega))
+  · exact List.count_pos_iff.mp (by rw [h2]; exact hpos _ (by omega))
+
+/-! #### the doubling word -/
+
+theorem dbl_step_a (m : Nat) : dblS.step (List.replicate m false) = List.replicate m true := by
+  induction m with
+  | zero => rfl
+  | succ m ih => simp [List.replicate_succ, step_cons, ih]; rfl
+
+theorem dbl_step_b (m : Nat) : dblS.step (List.replicate m true) = List.replicate (2 * m) false := by
+  induction m with
+  | zero => rfl
+  | succ m ih =>
+    rw [List.replicate_succ, step_cons, ih, show 2 * (m + 1) = 2 + 2 * m by omega,
+      ← List.append_replicate_replicate]
+    rfl
+
+theorem dbl_closed (k : Nat) :
+    dblS.derive (2 * k) = List.replicate (2 ^ k) false ++ List.replicate (2 ^ k) true ∧
+    dblS.derive (2 * k + 1) = List.replicate (2 ^ k) true ++ List.replicate (2 ^ (k + 1)) false := by
+  induction k with
+  | zero => exact ⟨rfl, rfl⟩
+  | succ k ih =>
+    obtain ⟨i1, i2⟩ := ih
+    have e : 2 * (k + 1) = 2 * k + 1 + 1 := by omega
+    have e1 : 2 ^ (k + 1) = 2 * 2 ^ k := by rw [Nat.pow_succ, Nat.mul_comm]
+    have e2 : 2 ^ (k + 1 + 1) = 2 * (2 * 2 ^ k) := by rw [Nat.pow_succ, Nat.pow_succ]; omega
+    constructor
+    · rw [e]
+      show dblS.step (dblS.derive (2 * k + 1)) = _
+      rw [i2, step_append, dbl_step_b, dbl_step_a, e1]
+    · rw [e]
+      show dblS.step (dblS.step (dblS.derive (2 * k + 1))) = _
+      rw [i2, step_append, dbl_step_b, dbl_step_a, step_append, dbl_step_a, dbl_step_b, e1, e2]
+
+theorem runs_block (x : Bool) (M N : Nat) :
+    runs x (List.replicate M x ++ List.replicate N (!x)) = M :: List.replicate N 0 := by
+  rw [runs_replicate_append]
+  have : ∀ N, runs x (List.replicate N (!x)) = List.replicate (N + 1) 0 := by
+    intro N; induction N with
+    | zero => rfl
+    | succ N ih => rw [List.replicate_succ, runs_notx_cons, ih]; rfl
+  rw [this, List.replicate_succ]; simp
+
+theorem runs_block' (x : Bool) (M N : Nat) :
+    runs x (List.replicate M (!x) ++ List.replicate N x) = List.replicate M 0 ++ [N] := by
+  induction M with
+  | zero => rw [List.replicate_zero, List.nil_append, ← List.append_nil (List.replicate N x),
+      runs_replicate_append]; simp [runs]
+  | succ M ih => rw [List.replicate_succ, List.cons_append, runs_notx_cons, ih]; rfl
+
+/-- A two-block word `x^M (!x)^N` with `N ≥ 2` fails `Crit n x` for every `n ≥ 1`. -/
+theorem block_not_crit (n : Nat) (hn : 1 ≤ n) (x : Bool) (M N : Nat) (hN : 2 ≤ N) :
+    ¬ Crit n x (List.replicate M x ++ List.replicate N (!x)) := by
+  intro hc
+  obtain ⟨-, hinner, -⟩ := hc
+  rw [runs_block] at hinner
+  have : 0 ∈ ((M :: List.replicate N 0).drop 1).dropLast := by
+    simp only [List.drop_succ_cons, List.drop_zero]
+    obtain ⟨N', rfl⟩ : ∃ N', N = N' + 2 := ⟨N - 2, by omega⟩
+    rw [List.replicate_succ, List.replicate_succ, List.dropLast_cons₂]; simp
+  have := hinner 0 this; omega
+
+theorem block_not_crit' (n : Nat) (hn : 1 ≤ n) (x : Bool) (M N : Nat) (hM : 2 ≤ M) :
+    ¬ Crit n x (List.replicate M (!x) ++ List.replicate N x) := by
+  intro hc
+  obtain ⟨-, hinner, -⟩ := hc
+  rw [runs_block'] at hinner
+  have : 0 ∈ ((List.replicate M 0 ++ [N]).drop 1).dropLast := by
+    obtain ⟨M', rfl⟩ : ∃ M', M = M' + 2 := ⟨M - 2, by omega⟩
+    simp only [List.replicate_succ, List.cons_append, List.drop_succ_cons, List.drop_zero]
+    cases M' with
+    | zero => simp
+    | succ M'' => rw [List.replicate_succ, List.cons_append, List.dropLast_cons₂]; simp
+  have := hinner 0 this; omega
+
+theorem dbl_not_crit (n : Nat) (hn : 2 ≤ n) (x : Bool) : ¬ Crit n x (dblS.derive n) := by
+  have h2k : 2 ≤ 2 ^ (n / 2) := by
+    calc 2 = 2 ^ 1 := rfl
+      _ ≤ 2 ^ (n / 2) := Nat.pow_le_pow_right (by omega) (by omega)
+  obtain ⟨d1, d2⟩ := dbl_closed (n / 2)
+  rcases Nat.mod_two_eq_zero_or_one n with he | ho
+  · rw [show 2 * (n / 2) = n by omega] at d1
+    rw [d1]
+    cases x
+    · exact block_not_crit n (by omega) false _ _ h2k
+    · exact block_not_crit' n (by omega) true _ _ h2k
+  · rw [show 2 * (n / 2) + 1 = n by omega] at d2
+    rw [d2]
+    cases x
+    · exact block_not_crit' n (by omega) false _ _ h2k
+    · exact block_not_crit n (by omega) true _ _ (by rw [Nat.pow_succ]; omega)
+
+theorem dbl_length (n : Nat) :
+    (dblS.derive n).length = (if n % 2 = 0 then 2 * 2 ^ (n / 2) else 3 * 2 ^ (n / 2)) := by
+  obtain ⟨d1, d2⟩ := dbl_closed (n / 2)
+  rcases Nat.mod_two_eq_zero_or_one n with he | ho
+  · rw [show 2 * (n / 2) = n by omega] at d1
+    rw [d1, if_pos he]; simp; omega
+  · rw [show 2 * (n / 2) + 1 = n by omega] at d2
+    rw [d2, if_neg (by omega)]; simp [Nat.pow_succ]; omega
+
+theorem dbl_both (n : Nat) : ∀ c, c ∈ dblS.derive n := by
+  obtain ⟨d1, d2⟩ := dbl_closed (n / 2)
+  have hp : 1 ≤ 2 ^ (n / 2) := Nat.pos_pow_of_pos _ (by omega)
+  have hp' : 1 ≤ 2 ^ (n / 2 + 1) := Nat.pos_pow_of_pos _ (by omega)
+  intro c
+  rcases Nat.mod_two_eq_zero_or_one n with he | ho
+  · rw [show 2 * (n / 2) = n by omega] at d1; rw [d1]
+    cases c <;> simp <;> omega
+  · rw [show 2 * (n / 2) + 1 = n by omega] at d2; rw [d2]
+    cases c <;> simp <;> omega
+
+/-! #### which witness is shorter -/
+
+def Dn (n : Nat) : Nat := if n % 2 = 0 then 2 * 2 ^ (n / 2) else 3 * 2 ^ (n / 2)
+
+theorem Dn_succ_succ (n : Nat) : Dn (n + 2) = 2 * Dn n := by
+  unfold Dn
+  have : (n + 2) / 2 = n / 2 + 1 := by omega
+  have h2 : (n + 2) % 2 = n % 2 := by omega
+  rw [this, h2, Nat.pow_succ]
+  split <;> omega
+
+theorem fib_two_step (n : Nat) : 2 * fib (n + 1) ≤ fib (n + 3) := by
+  rw [fib_succ_succ (n + 1), fib_succ_succ n]
+  have := fib_mono_succ n
+  omega
+
+theorem Dn_le_fib (n : Nat) (hn : 8 ≤ n) : Dn n ≤ fib (n + 1) := by
+  induction n using Nat.strongRecOn with
+  | _ n ih =>
+    rcases Nat.lt_or_ge n 10 with h | h
+    · rcases (show n = 8 ∨ n = 9 by omega) with rfl | rfl <;> decide
+    · obtain ⟨m, rfl⟩ : ∃ m, n = m + 2 := ⟨n - 2, by omega⟩
+      rw [Dn_succ_succ]
+      have := ih m (by omega) (by omega)
+      have := fib_two_step m
+      rw [show m + 2 + 1 = m + 3 from rfl]
+      omega
+
+theorem sharpT_eq (n : Nat) :
+    sharpT n = (if n ≤ 7 then fib (n + 1) else Dn n) := by
+  unfold sharpT
+  by_cases h : n ≤ 7
+  · rw [if_pos h]
+    apply Nat.min_eq_left
+    show fib (n + 1) ≤ Dn n
+    rcases (show n = 0 ∨ n = 1 ∨ n = 2 ∨ n = 3 ∨ n = 4 ∨ n = 5 ∨ n = 6 ∨ n = 7 by omega)
+      with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
+  · rw [if_neg h]
+    exact Nat.min_eq_right (Dn_le_fib n (by omega))
+
+/-- **Sharpness for all `n ≥ 2`** (proved). Some word of length exactly `T(n)` is derived in
+`n` steps by a non-erasing system with a shorter axiom, uses both letters, and meets neither
+criterion. -/
+theorem sharp_witness (n : Nat) (hn : 2 ≤ n) :
+    ∃ (S : DOL Bool) (w : List Bool), (∀ a, S.rule a ≠ []) ∧ S.derive n = w ∧
+      S.start.length < w.length ∧ (∀ c, c ∈ w) ∧ w.length = sharpT n ∧
+      ¬ Crit n false w ∧ ¬ Crit n true w := by
+  rw [sharpT_eq]
+  by_cases h : n ≤ 7
+  · rw [if_pos h]
+    refine ⟨fibS, fibS.derive n, by decide, rfl, ?_, fib_both n hn, fib_length n, ?_, ?_⟩
+    · rw [fib_length]
+      show 1 < fib (n + 1)
+      rcases (show n = 2 ∨ n = 3 ∨ n = 4 ∨ n = 5 ∨ n = 6 ∨ n = 7 by omega)
+        with rfl | rfl | rfl | rfl | rfl | rfl <;> decide
+    · rcases (show n = 2 ∨ 3 ≤ n by omega) with rfl | h3
+      · decide
+      · exact fib_not_crit n h3 false
+    · rcases (show n = 2 ∨ 3 ≤ n by omega) with rfl | h3
+      · decide
+      · exact fib_not_crit n h3 true
+  · rw [if_neg h]
+    refine ⟨dblS, dblS.derive n, by decide, rfl, ?_, dbl_both n, dbl_length n,
+      dbl_not_crit n hn false, dbl_not_crit n hn true⟩
+    rw [dbl_length]
+    show 2 < _
+    have : 2 ≤ 2 ^ (n / 2) := by
+      calc 2 = 2 ^ 1 := rfl
+        _ ≤ 2 ^ (n / 2) := Nat.pow_le_pow_right (by omega) (by omega)
+    split <;> omega
+
 /-! ### Executable checks inside Lean -/
 
 def sameSet [DecidableEq β] (xs ys : List β) : Bool :=
@@ -3477,10 +3912,9 @@ theorem infer_complete (sigma : List Nat) (B : Bounds) (w : List Nat) (n : Nat)
 
 /-- Theorem 5 (soundness of the search). -/
 theorem infer_sound (sigma : List Nat) (B : Bounds) (w : List Nat) (n : Nat)
-    (h_sub : ∀ c ∈ w, c ∈ sigma) (h_ne : w ≠ []) (h_rule : 1 ≤ B.maxRule)
     (fuel : Nat) (Q : Presented Nat) (h_inf : Q ∈ infer sigma B w n fuel) :
     ∃ P ∈ sol sigma B w n, canon sigma n Q = canon sigma n P :=
-  LSys.infer_sound sigma B w n h_sub h_ne h_rule fuel Q h_inf
+  LSys.infer_sound sigma B w n fuel Q h_inf
 
 /-- Theorem 6 (unary characterization). -/
 theorem unary_iff (L n : Nat) (h_L : 1 ≤ L) (h_n : 1 ≤ n) :
@@ -3534,16 +3968,11 @@ theorem insertion_of_crit (n : Nat) (x : Bool) (w : List Bool) (h_n : 1 ≤ n)
     ∃ S : DOL Bool, S.rule x = [x] ∧ S.start.length < w.length ∧ S.derive n = w :=
   LSys.insertion_of_crit n h_n x w h_crit h_head
 
-/-- Proposition 12 (sharpness witnesses, n = 2..7). -/
-theorem sharp_witness_fib (n : Nat) (h_n : n ∈ [2, 3, 4, 5, 6, 7]) :
-    (fibS.derive n).length = sharpT n ∧ fibS.start.length < (fibS.derive n).length ∧
-      ¬ Crit n false (fibS.derive n) ∧ ¬ Crit n true (fibS.derive n) :=
-  LSys.sharp_witness_fib n h_n
-
-/-- Proposition 13 (sharpness witnesses, n = 8, 9). -/
-theorem sharp_witness_dbl (n : Nat) (h_n : n ∈ [8, 9]) :
-    (dblS.derive n).length = sharpT n ∧ dblS.start.length < (dblS.derive n).length ∧
-      ¬ Crit n false (dblS.derive n) ∧ ¬ Crit n true (dblS.derive n) :=
-  LSys.sharp_witness_dbl n h_n
+/-- Theorem 12 (sharpness for every n). -/
+theorem sharp_witness (n : Nat) (h_n : 2 ≤ n) :
+    ∃ (S : DOL Bool) (w : List Bool), (∀ a, S.rule a ≠ []) ∧ S.derive n = w ∧
+      S.start.length < w.length ∧ (∀ c, c ∈ w) ∧ w.length = sharpT n ∧
+      ¬ Crit n false w ∧ ¬ Crit n true w :=
+  LSys.sharp_witness n h_n
 
 end Paper

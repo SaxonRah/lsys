@@ -1,9 +1,9 @@
 # Alignment report: Inverse Inference of D0L Systems
 
 **Verdict:** ALIGNED
-The PFA checker returns `Result: PASS` on the final `paper.tex` against `Paper.lean`; every
-definition, theorem, proposition and example in the paper is tagged; no dependency on `sorry`
-or non-standard axioms.
+The PFA checker returns `Result: PASS` on the final `paper.tex` against `Paper.lean` (22 tagged
+statements); every definition, theorem and example in the paper is tagged; no dependency on
+`sorry` or non-standard axioms.
 
 ## Substantive mismatches
 None.
@@ -25,8 +25,10 @@ are instances of the general ones (alphabet `Nat`, `Unit` or `Bool`).
 - "axiom shorter than $w$": `S.start.length < w.length`.
 - Standing assumptions of §5 (binary, non-erasing, short axiom, both letters) are restated as
   explicit hypotheses in each theorem rather than as untagged standing text.
-- The soundness theorem's three side hypotheses (`w ⊆ Σ`, `w ≠ []`, `maxRule ≥ 1`) are stated in
-  the paper; they are not artifacts of the formalization but genuine conditions.
+- The soundness theorem has no side hypotheses: the search filters leaf candidates by Σ, never
+  closes an empty axiom, and returns nothing when no legal rule body exists. (An earlier version
+  needed `w ⊆ Σ`, `w ≠ []`, `maxRule ≥ 1`; those were genuine discrepancies, since fixed in the
+  search itself.)
 
 ## Equivalence lemmas added
 None needed: every difference between a reading and the formal text (implicit binder types,
@@ -38,7 +40,8 @@ built-in tactics (`Iff.rfl`).
 - `Paper.sharpT_values`: `T(0..9) = 1,1,2,3,5,8,13,21,32,48` (tests `sharpT`).
 - `Paper.sharp_implies_insertion_nonvacuous`: the hypotheses of the sharp bound hold for
   `b ↦ ab, a ↦ a`, axiom `b`, `n = 5`, `w = a⁵b`.
-- `Paper.sharp_witness_fib`, `Paper.sharp_witness_dbl`: decided in Lean; they also test `Crit`.
+- `Paper.sharp_witness` is a theorem for all `n ≥ 2`; the concrete instances `LSys.sharp_witness_fib`,
+  `LSys.sharp_witness_dbl` (n = 2..9) remain as kernel-decided tests of `Crit`, `sharpT`, `fibS`, `dblS`.
 
 ## Independence
 The paper and the formalization were written by the same author in the same session, with

@@ -39,11 +39,16 @@ class LSystem:
 
 
 def infer(w, n, max_axiom=3, max_rule=4, allow_empty=False,
-          hidden=0, max_solutions=200):
-    """Enumerate D0L systems S with S.derive(n) == w, within size bounds."""
-    base = sorted(set(w))
-    hidden_syms = [c for c in "XYZUVW" if c not in w][:hidden]
-    sigma = base + hidden_syms
+          hidden=0, max_solutions=200, sigma=None):
+    """Enumerate D0L systems S with S.derive(n) == w, within size bounds.
+    sigma defaults to the symbols of w plus `hidden` extra symbols."""
+    if sigma is None:
+        base = sorted(set(w))
+        hidden_syms = [c for c in "XYZUVW" if c not in w][:hidden]
+        sigma = base + hidden_syms
+    lo = 0 if allow_empty else 1
+    if lo > max_rule:          # no legal rule body exists: the solution set is empty
+        return []
 
     rules = {}
     closed = {}
@@ -78,10 +83,13 @@ def infer(w, n, max_axiom=3, max_rule=4, allow_empty=False,
                 need += minexp(c, d + 1, memo)
         return need
 
+    def default_body(a):          # shortest legal body for a never-rewritten symbol
+        return "" if max_rule == 0 else a
+
     def record():
-        sysm = LSystem(START and rules[START] and "".join(rules[START]),
-                       {k: "".join(v) for k, v in rules.items()
-                        if k != START and closed.get(k)})
+        sysm = LSystem("".join(rules[START]),
+                       {a: ("".join(rules[a]) if closed.get(a) else default_body(a))
+                        for a in sigma})
         found.setdefault((sysm.axiom, tuple(sorted(sysm.rules.items()))), sysm)
 
     def rec(stack, pos):
@@ -117,8 +125,8 @@ def infer(w, n, max_axiom=3, max_rule=4, allow_empty=False,
             stack.append(fr)
             return
 
-        # rule still open: either close it here, or append another symbol
-        if len(r) >= 1 or allow_empty:
+        # rule still open: either close it here (never an empty axiom), or append a symbol
+        if len(r) >= 1 or (allow_empty and sym != START):
             closed[sym] = True
             fr = stack.pop()
             rec(stack, pos)
@@ -127,7 +135,7 @@ def infer(w, n, max_axiom=3, max_rule=4, allow_empty=False,
 
         if len(r) < maxlen(sym):
             if d + 1 == n + 1:
-                cands = [w[pos]] if pos < len(w) else []
+                cands = [w[pos]] if pos < len(w) and w[pos] in sigma else []
             else:
                 cands = sigma
             for c in cands:

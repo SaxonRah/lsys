@@ -13,8 +13,10 @@ def canon(S, n):
     u = used_symbols(S, n)
     return (S.axiom, tuple(sorted((k, v) for k, v in S.rules.items() if k in u)))
 
-def brute(w, n, max_axiom, max_rule, allow_empty=False, hidden=0):
-    base = sorted(set(w)); sigma = base + [c for c in "XYZUVW" if c not in w][:hidden]
+def brute(w, n, max_axiom, max_rule, allow_empty=False, hidden=0, sigma=None):
+    if sigma is None:
+        base = sorted(set(w)); sigma = base + [c for c in "XYZUVW" if c not in w][:hidden]
+    sigma = list(sigma)
     lo = 0 if allow_empty else 1
     def strings(lo_, hi): 
         for L in range(lo_, hi+1):
@@ -26,21 +28,26 @@ def brute(w, n, max_axiom, max_rule, allow_empty=False, hidden=0):
             if S.derive(n) == w: out.add(canon(S, n))
     return out
 
-random.seed(1)
-bad = 0
-for trial in range(300):
-    n = random.randint(1, 3)
-    B = dict(max_axiom=random.randint(1,2), max_rule=random.randint(1,2),
-             allow_empty=random.random()<0.3, hidden=random.randint(0,1))
-    # generate w by sampling a random system so Sol is often nonempty
-    sigma = random.sample("ab", random.randint(1,2))
+if __name__ == "__main__":
+  random.seed(1)
+  bad = 0; cnt = 0
+  for trial in range(600):
+    n = random.randint(0, 3)
+    B = dict(max_axiom=random.randint(1,2), max_rule=random.randint(0,2),
+             allow_empty=random.random()<0.4)
+    # alphabet independent of w: covers w ⊄ sigma, w = [], maxRule = 0
+    sig = random.sample("abc", random.randint(1,2))
     lo = 0 if B['allow_empty'] else 1
-    S0 = LSystem("".join(random.choices(sigma, k=random.randint(1,B['max_axiom']))),
-                 {c: "".join(random.choices(sigma, k=random.randint(lo,B['max_rule']))) for c in sigma})
-    w = S0.derive(n)
-    if not (1 <= len(w) <= 12): continue
-    got = {canon(S, n) for S in infer(w, n, max_solutions=10**9, **B)}
-    exp = brute(w, n, **B)
+    if random.random() < 0.7 and lo <= B['max_rule']:
+        S0 = LSystem("".join(random.choices(sig, k=random.randint(1,B['max_axiom']))),
+                     {c: "".join(random.choices(sig, k=random.randint(lo,B['max_rule']))) for c in sig})
+        w = S0.derive(n)
+    else:
+        w = "".join(random.choices("abc", k=random.randint(0,4)))
+    if len(w) > 12: continue
+    cnt += 1
+    got = {canon(S, n) for S in infer(w, n, max_solutions=10**9, sigma=sig, **B)}
+    exp = brute(w, n, sigma=sig, **B)
     if got != exp:
-        bad += 1; print("MISMATCH", repr(w), n, B); print(" infer-only:", got-exp); print(" brute-only:", exp-got)
-print("mismatches:", bad)
+        bad += 1; print("MISMATCH", repr(w), n, B, sig); print(" infer-only:", got-exp); print(" brute-only:", exp-got)
+  print("cases", cnt, "mismatches:", bad)

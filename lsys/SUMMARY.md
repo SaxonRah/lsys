@@ -11,8 +11,8 @@ with `derive n = w`.  The set of solutions under size bounds `B` is `sol sigma B
 
 ## Master theorem (proved, both directions)
 * `infer_complete` — every bounded solution is emitted by the search.
-* `infer_sound`    — every emitted key is a bounded solution (needs `w ⊆ sigma`, `w ≠ []`, `maxRule ≥ 1`;
-  each is a genuine discrepancy otherwise, found by the proof).
+* `infer_sound`    — every emitted key is a bounded solution, with no side conditions.
+  (An earlier version needed `w ⊆ sigma`, `w ≠ []`, `maxRule ≥ 1`; the search was tightened instead.)
 Both up to `canon` (rules of never-rewritten symbols are irrelevant).
 
 ## Existence
@@ -35,9 +35,8 @@ Let `T(n) = min(F_{n+1}, D(n))`, `D(n) = 2·2^(n/2)` (n even), `3·2^(n/2)` (n o
   *insertion system*: one letter fixed, the other ↦ `x^p (!x) x^q`, `p+q ≥ 1`.
 * `crit_of_insertion`, `insertion_of_crit` — insertion words are exactly the words whose
   inner `x`-runs all have length ≥ n and whose leading or trailing `x`-run has length ≥ n.
-* `sharp_witness_fib`, `sharp_witness_dbl` — `T(n)` is attained for `n = 2..9`: the Fibonacci
-  word `f^n(b)` (`a→ab, b→a`) for `n ≤ 7` and `a^(2^k) b^(2^k)` (`a→b, b→aa`, axiom `ab`) for `n = 8, 9`
-  are solvable and fail the criterion.
+* `sharp_witness` — `T(n)` is attained for every `n ≥ 2`: the Fibonacci word `f^n(b)` (`a→ab, b→a`)
+  for `n ≤ 7` and `a^(2^k) b^(2^k)` (`a→b, b→aa`, axiom `ab`) for `n ≥ 8` are solvable and fail the criterion.
 
 So below `T(n)` the binary problem is completely characterized.
 
@@ -46,11 +45,6 @@ Solvability is decidable (`infer`), but no structural characterization is known.
 families: insertion; Fibonacci-type (`a→ab,b→a` and relatives, growth `φ^n`); doubling
 (`a→b, b→aa`, growth `√2^n`); and mixtures with longer axioms (e.g. `aaaabbbbaaaa` at `n=4`
 from `a→bb, b→a`, axiom `aba`).
-
-**Conjecture A (sharpness, all n).** `T(n)` is the exact threshold for every `n ≥ 2`:
-the Fibonacci word for `n ≤ 7` and `a^(2^k) b^(2^k)` for `n ≥ 8` are the shortest non-insertion
-solvable words.  (Proved for `n ≤ 9`; the Parikh argument already shows nothing shorter exists,
-so only "these specific words are not insertion words" remains for general `n`.)
 
 **Conjecture B (asymptotic density).** For fixed `n ≥ 3`, let `N_n(L)` be the number of binary
 words of length `L` with a non-erasing shorter-axiom system at step `n`.  Then
@@ -63,5 +57,5 @@ at most `2^(2^(-n/2))` since its words are images of axioms expanded by a factor
 an equivalent solution whose axiom length is at most `L / 2^(n/2)` — i.e. the long axioms seen
 in the data only ever occur in the insertion family.
 
-Evidence: exhaustive search for `n = 3..6`, `L ≤ 15` (`conj.py`): no counterexample to A, and the
-counts at `n = 6` are exactly `L − n` for `L ≤ 12` (pure insertion family).
+Evidence: exhaustive search for `n = 3..6`, `L ≤ 15` (`conj.py`); the counts at `n = 6` are exactly
+`L − n` for `L ≤ 12` (pure insertion family).

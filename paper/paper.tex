@@ -26,8 +26,9 @@ context-free rewriting rules) that derives $w$ in exactly $n$ steps. We give a p
 backtracking search and prove it sound and complete against a brute-force specification;
 we prove existence theorems, a complete characterization over a one-letter alphabet, two
 pigeonhole bounds showing that most words have no small system; and, for a two-letter
-alphabet, a sharp threshold $T(n)=\min(F_{n+1},D(n))$ below which every non-erasing solution
-with a short axiom is an \emph{insertion system}. Every statement is machine-checked in Lean~4
+alphabet, a threshold $T(n)=\min(F_{n+1},D(n))$ below which every non-erasing solution
+with a short axiom is an \emph{insertion system}, together with a proof that $T(n)$ is attained
+for every $n\ge2$. Every statement is machine-checked in Lean~4
 (core library only, no \texttt{sorry}), and the statements in this paper are aligned to the
 formalization with PFA tags.
 \end{abstract}
@@ -119,8 +120,7 @@ for some fuel, the search emits a system $Q$ with $\mathrm{canon}(Q)=\mathrm{can
 
 \begin{theorem}[Soundness]\formal{Paper.infer_sound}
 Let \var{sigma}{List nat}{$\Sigma$}, \var{B}{Bounds}{$B$}, \var{w}{List nat}{$w$},
-\var{n}{nat}{$n$} be as above, with \hyp{h_sub}{forall c, c ∈ w -> c ∈ sigma}{$w\in\Sigma^*$},
-\hyp{h_ne}{w ≠ []}{$w$ nonempty} and \hyp{h_rule}{1 <= B.maxRule}{rules of length $1$ allowed}.
+\var{n}{nat}{$n$} be as above.
 If \var{Q}{Presented nat}{$Q$} is emitted by the search with any \var{fuel}{nat}{fuel},
 \hyp{h_inf}{Q ∈ infer sigma B w n fuel}{$Q\in\texttt{infer}(\Sigma,B,w,n,\mathrm{fuel})$}, then
 \concl{exists P, P ∈ sol sigma B w n /\ canon sigma n Q = canon sigma n P}{%
@@ -136,8 +136,10 @@ $3\cdot\text{pending}+2\cdot|\text{stack}|+\text{leaves}+\text{slack}$ strictly 
 The pruning test is a lower bound on the owed leaves, so it never fires on the path.
 Soundness is the mirror image: induct backwards from the emitted key, read a system off the
 final rule table, and carry an extension relation between the current and final tables.
-The three side hypotheses are genuine: each is a degenerate input on which the search and
-the brute-force set differ.
+Three details of the search are what make soundness unconditional: leaf candidates are
+restricted to $\Sigma$, an empty axiom is never closed (empty rules may be), and the search
+returns nothing when no legal rule body exists; without them the search and the brute-force
+set differ on $w\notin\Sigma^*$, on $w=\varepsilon$, and on a zero rule-length cap.
 \end{proof}
 
 \section{Impossibility and counting}
@@ -242,25 +244,25 @@ Remove $n$ copies of $x$ before every $\bar x$ to form the axiom; the rules $x\m
 $\bar x\mapsto x\bar x$ put them back. The trailing-run case is the reversal.
 \end{proof}
 
-\begin{proposition}[Sharpness, $n\le7$]\formal{Paper.sharp_witness_fib}
-Let $\mathrm{fib}$ be the system $a\mapsto ab$, $b\mapsto a$ with axiom $b$, and let
-\var{n}{nat}{$n$} satisfy \hyp{h_n}{n ∈ [2, 3, 4, 5, 6, 7]}{$2\le n\le7$}. Then
-\concl{(fibS.derive n).length = sharpT n /\ fibS.start.length < (fibS.derive n).length /\ ~Crit n false (fibS.derive n) /\ ~Crit n true (fibS.derive n)}{%
-the word $\mathrm{fib}.\mathrm{derive}(n)$ has length exactly $T(n)$, is longer
-than its axiom, and satisfies neither $\mathrm{Crit}(n,a,\cdot)$ nor $\mathrm{Crit}(n,b,\cdot)$}.
-\end{proposition}
-
-\begin{proposition}[Sharpness, $n=8,9$]\formal{Paper.sharp_witness_dbl}
-Let $\mathrm{dbl}$ be the system $a\mapsto b$, $b\mapsto aa$ with axiom $ab$, and let
-\var{n}{nat}{$n$} satisfy \hyp{h_n}{n ∈ [8, 9]}{$n\in\{8,9\}$}. Then
-\concl{(dblS.derive n).length = sharpT n /\ dblS.start.length < (dblS.derive n).length /\ ~Crit n false (dblS.derive n) /\ ~Crit n true (dblS.derive n)}{%
-the word $\mathrm{dbl}.\mathrm{derive}(n)$ has length exactly $T(n)$, is longer than
-its axiom, and satisfies neither criterion}.
-\end{proposition}
+\begin{theorem}[Sharpness]\formal{Paper.sharp_witness}
+For every \var{n}{nat}{$n$} with \hyp{h_n}{2 <= n}{$n\ge2$},
+\concl{exists (S : DOL Bool) (w : List Bool), (forall a, S.rule a ≠ []) /\ S.derive n = w /\ S.start.length < w.length /\ (forall c, c ∈ w) /\ w.length = sharpT n /\ ~Crit n false w /\ ~Crit n true w}{%
+there is a non-erasing system with an axiom shorter than the word it derives in $n$ steps,
+that word using both letters, of length exactly $T(n)$, and satisfying neither
+$\mathrm{Crit}(n,a,\cdot)$ nor $\mathrm{Crit}(n,b,\cdot)$}.
+\end{theorem}
+\begin{proof}
+For $n\le7$ take $a\mapsto ab$, $b\mapsto a$ from axiom $b$: the iterates have length $F_{n+1}$,
+contain no $bb$ and no $aaa$ (an invariant preserved by the step), while the criterion forces a
+factor $x^n$. For $n\ge8$ take $a\mapsto b$, $b\mapsto aa$ from axiom $ab$: the iterates are
+$a^{2^k}b^{2^k}$ or $b^{2^k}a^{2^{k+1}}$, of length $D(n)$, and a two-block word has an inner run
+of length $0$. Finally $D(n)\le F_{n+1}$ exactly when $n\ge8$, since $D(n+2)=2D(n)$ and
+$F_{n+3}\ge2F_{n+1}$.
+\end{proof}
 
 Consequently, below $T(n)$ a binary word is derivable (non-erasing, short axiom) exactly when
-it satisfies $\mathrm{Crit}(n,a,\cdot)$ or $\mathrm{Crit}(n,b,\cdot)$, and $T(n)$ is attained for
-$2\le n\le 9$.
+it satisfies $\mathrm{Crit}(n,a,\cdot)$ or $\mathrm{Crit}(n,b,\cdot)$, and the bound $T(n)$ is
+attained for every $n\ge2$.
 
 \section{The open region}
 
@@ -269,13 +271,6 @@ Exhaustive search for $n\le6$ and $|w|\le15$ shows three families: insertion, Fi
 ($a\mapsto ab$, $b\mapsto a$ and relatives, growth $\varphi^n$), and doubling
 ($a\mapsto b$, $b\mapsto aa$, growth $\sqrt2^{\,n}$), together with longer-axiom mixtures such as
 $a^4b^4a^4$ at $n=4$ from $a\mapsto bb$, $b\mapsto a$, axiom $aba$.
-
-\begin{conjecture}[Sharpness for all $n$]
-$T(n)$ is the exact threshold for every $n\ge2$: the shortest non-insertion derivable words are
-the Fibonacci iterate for $n\le7$ and $a^{2^k}b^{2^k}$ for $n\ge8$. (The Parikh argument above
-already excludes anything shorter; only ``these specific words are never insertion words'' is
-open for general $n$.)
-\end{conjecture}
 
 \begin{conjecture}[Density]
 For fixed $n\ge3$ let $N_n(L)$ count the binary words of length $L$ with a non-erasing

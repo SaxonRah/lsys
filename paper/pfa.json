@@ -9,7 +9,6 @@
     "theorem Paper.chain_exists: hypothesis 'h_sub' 'forall c, c ∈ cs -> c ∈ w' proved equivalent to formal 'forall c : nat, c ∈ cs -> c ∈ w'",
     "theorem Paper.chain_exists: conclusion 'exists S : DOL nat, S.start.length = 1 /\\ S.derive n = w /\\ (forall a, a ∈ S.start -> a ∈ w) /\\ forall a, a ∉ w -> S.rule a = [a]' proved equivalent to formal 'exists S : DOL nat, S.start.length = 1 /\\ S.derive n = w /\\ (forall a : nat, a ∈ S.start -> a ∈ w) /\\ forall a : nat, ~a ∈ w -> S.rule a = [a]'",
     "theorem Paper.infer_complete: conclusion 'exists fuel, exists Q, Q ∈ infer sigma B w n fuel /\\ canon sigma n Q = canon sigma n P' proved equivalent to formal 'exists fuel : nat, exists Q : Presented nat, Q ∈ infer sigma B w n fuel /\\ canon sigma n Q = canon sigma n P'",
-    "theorem Paper.infer_sound: hypothesis 'h_sub' 'forall c, c ∈ w -> c ∈ sigma' proved equivalent to formal 'forall c : nat, c ∈ w -> c ∈ sigma'",
     "theorem Paper.infer_sound: conclusion 'exists P, P ∈ sol sigma B w n /\\ canon sigma n Q = canon sigma n P' proved equivalent to formal 'exists P : Presented nat, P ∈ sol sigma B w n /\\ canon sigma n Q = canon sigma n P'",
     "theorem Paper.unary_iff: conclusion '(exists S : DOL Unit, S.start.length < L /\\ S.derive n = List.replicate L ()) <-> exists m, 2 <= m /\\ m ^ n ∣ L' proved equivalent to formal '(exists S : DOL Unit, S.start.length < L /\\ S.derive n = List.replicate L ()) <-> exists m : nat, 2 <= m /\\ m ^ n ∣ L'",
     "theorem Paper.exists_underivable: hypothesis 'h_nodup' 'List.Nodup sigma' proved equivalent to formal 'sigma.Nodup'",
@@ -20,7 +19,8 @@
     "theorem Paper.sharp_implies_insertion: hypothesis 'h_both' 'forall c, c ∈ w' proved equivalent to formal 'forall c : Bool, c ∈ w'",
     "theorem Paper.sharp_implies_insertion: conclusion 'exists x p q, S.rule x = [x] /\\ S.rule (!x) = List.replicate p x ++ (!x) :: List.replicate q x /\\ 1 <= p + q' proved equivalent to formal 'exists x : Bool, exists p : nat, exists q : nat, S.rule x = [x] /\\ (S.rule !x) = List.replicate p x ++ (!x) :: List.replicate q x /\\ 1 <= p + q'",
     "example Paper.sharp_implies_insertion_nonvacuous: conclusion 'exists (S : DOL Bool) (n : nat) (w : List Bool), (forall a, S.rule a <> []) /\\ S.derive n = w /\\ S.start.length < w.length /\\ (forall c, c ∈ w) /\\ w.length < sharpT n' proved equivalent to formal 'exists S : DOL Bool, exists n : nat, exists w : List Bool, (forall a : Bool, S.rule a <> []) /\\ S.derive n = w /\\ S.start.length < w.length /\\ (forall c : Bool, c ∈ w) /\\ w.length < sharpT n'",
-    "theorem Paper.crit_of_insertion: hypothesis 'h_ins' 'S.rule (!x) = List.replicate p x ++ (!x) :: List.replicate q x' proved equivalent to formal '(S.rule !x) = List.replicate p x ++ (!x) :: List.replicate q x'"
+    "theorem Paper.crit_of_insertion: hypothesis 'h_ins' 'S.rule (!x) = List.replicate p x ++ (!x) :: List.replicate q x' proved equivalent to formal '(S.rule !x) = List.replicate p x ++ (!x) :: List.replicate q x'",
+    "theorem Paper.sharp_witness: conclusion 'exists (S : DOL Bool) (w : List Bool), (forall a, S.rule a <> []) /\\ S.derive n = w /\\ S.start.length < w.length /\\ (forall c, c ∈ w) /\\ w.length = sharpT n /\\ ~Crit n false w /\\ ~Crit n true w' proved equivalent to formal 'exists S : DOL Bool, exists w : List Bool, (forall a : Bool, S.rule a <> []) /\\ S.derive n = w /\\ S.start.length < w.length /\\ (forall c : Bool, c ∈ w) /\\ w.length = sharpT n /\\ ~Crit n false w /\\ ~Crit n true w'"
   ],
   "review": [
     [
@@ -195,18 +195,6 @@
       "theorem Paper.infer_sound",
       "fuel",
       "nat",
-      null
-    ],
-    [
-      "theorem Paper.infer_sound",
-      "$w$ nonempty",
-      "w ≠ []",
-      null
-    ],
-    [
-      "theorem Paper.infer_sound",
-      "rules of length $1$ allowed",
-      "1 <= B.maxRule",
       null
     ],
     [
@@ -462,39 +450,15 @@
       null
     ],
     [
-      "proposition Paper.sharp_witness_fib",
+      "theorem Paper.sharp_witness",
       "$n$",
       "nat",
       null
     ],
     [
-      "proposition Paper.sharp_witness_fib",
-      "$2\\le n\\le7$",
-      "n ∈ [2, 3, 4, 5, 6, 7]",
-      null
-    ],
-    [
-      "proposition Paper.sharp_witness_fib",
-      "the word $\\mathrm{fib}.\\mathrm{derive}(n)$ has length exactly $T(n)$, is longer\nthan its axiom, and satisfies neither $\\mathrm{Crit}(n,a,\\cdot)$ nor $\\mathrm{Crit}(n,b,\\cdot)$",
-      "(fibS.derive n).length = sharpT n /\\ fibS.start.length < (fibS.derive n).length /\\ ~Crit n false (fibS.derive n) /\\ ~Crit n true (fibS.derive n)",
-      null
-    ],
-    [
-      "proposition Paper.sharp_witness_dbl",
-      "$n$",
-      "nat",
-      null
-    ],
-    [
-      "proposition Paper.sharp_witness_dbl",
-      "$n\\in\\{8,9\\}$",
-      "n ∈ [8, 9]",
-      null
-    ],
-    [
-      "proposition Paper.sharp_witness_dbl",
-      "the word $\\mathrm{dbl}.\\mathrm{derive}(n)$ has length exactly $T(n)$, is longer than\nits axiom, and satisfies neither criterion",
-      "(dblS.derive n).length = sharpT n /\\ dblS.start.length < (dblS.derive n).length /\\ ~Crit n false (dblS.derive n) /\\ ~Crit n true (dblS.derive n)",
+      "theorem Paper.sharp_witness",
+      "$n\\ge2$",
+      "2 <= n",
       null
     ],
     [
@@ -526,12 +490,6 @@
       "for some fuel, the search emits a system $Q$ with $\\mathrm{canon}(Q)=\\mathrm{canon}(P)$",
       "exists fuel, exists Q, Q ∈ infer sigma B w n fuel /\\ canon sigma n Q = canon sigma n P",
       "exists fuel : nat, exists Q : Presented nat, Q ∈ infer sigma B w n fuel /\\ canon sigma n Q = canon sigma n P"
-    ],
-    [
-      "theorem Paper.infer_sound",
-      "$w\\in\\Sigma^*$",
-      "forall c, c ∈ w -> c ∈ sigma",
-      "forall c : nat, c ∈ w -> c ∈ sigma"
     ],
     [
       "theorem Paper.infer_sound",
@@ -598,6 +556,12 @@
       "$f(\\bar x)=x^p\\bar x x^q$",
       "S.rule (!x) = List.replicate p x ++ (!x) :: List.replicate q x",
       "(S.rule !x) = List.replicate p x ++ (!x) :: List.replicate q x"
+    ],
+    [
+      "theorem Paper.sharp_witness",
+      "there is a non-erasing system with an axiom shorter than the word it derives in $n$ steps,\nthat word using both letters, of length exactly $T(n)$, and satisfying neither\n$\\mathrm{Crit}(n,a,\\cdot)$ nor $\\mathrm{Crit}(n,b,\\cdot)$",
+      "exists (S : DOL Bool) (w : List Bool), (forall a, S.rule a ≠ []) /\\ S.derive n = w /\\ S.start.length < w.length /\\ (forall c, c ∈ w) /\\ w.length = sharpT n /\\ ~Crit n false w /\\ ~Crit n true w",
+      "exists S : DOL Bool, exists w : List Bool, (forall a : Bool, S.rule a <> []) /\\ S.derive n = w /\\ S.start.length < w.length /\\ (forall c : Bool, c ∈ w) /\\ w.length = sharpT n /\\ ~Crit n false w /\\ ~Crit n true w"
     ]
   ]
 }
