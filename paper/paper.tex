@@ -1,0 +1,295 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amsthm,amssymb}
+\usepackage[margin=1.1in]{geometry}
+\usepackage{align}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{conjecture}{Conjecture}
+
+\newcommand{\N}{\mathbb{N}}
+
+\title{Inverse Inference of D0L Systems:\\ an Exact Algorithm, Bounds, and the Binary Threshold}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Given a word $w$ and a number of steps $n$, we ask for a D0L system (an axiom and
+context-free rewriting rules) that derives $w$ in exactly $n$ steps. We give a pruned
+backtracking search and prove it sound and complete against a brute-force specification;
+we prove existence theorems, a complete characterization over a one-letter alphabet, two
+pigeonhole bounds showing that most words have no small system; and, for a two-letter
+alphabet, a sharp threshold $T(n)=\min(F_{n+1},D(n))$ below which every non-erasing solution
+with a short axiom is an \emph{insertion system}. Every statement is machine-checked in Lean~4
+(core library only, no \texttt{sorry}), and the statements in this paper are aligned to the
+formalization with PFA tags.
+\end{abstract}
+
+\section{Definitions}
+
+Throughout, an alphabet is a finite list $\Sigma$ of symbols; for the general results we take
+symbols in $\N$, and for the binary results the two symbols are the booleans
+$a=\mathsf{false}$, $b=\mathsf{true}$.
+
+\begin{definition}[D0L system]\formal{LSys.DOL}
+A \emph{D0L system} over $\Sigma$ is a pair $S=(\omega,f)$ of an \emph{axiom}
+$\omega\in\Sigma^*$ (formally \texttt{start}) and a \emph{rule} map $f:\Sigma\to\Sigma^*$.
+\end{definition}
+
+\begin{definition}[Derivation]\formal{LSys.DOL.derive}
+One \emph{step} applies $f$ to every letter and concatenates the results. The word
+\emph{derived in $n$ steps} is $S.\mathrm{derive}(n)=f^{n}(\omega)$, with
+$S.\mathrm{derive}(0)=\omega$.
+\end{definition}
+
+\begin{example}\formal{Paper.fib_word}
+For the Fibonacci system $\mathrm{fib}_\N$: $0\mapsto 01$, $1\mapsto 0$ with axiom $0$,
+\concl{fibN.derive 5 = [0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1]}{five steps give $0100101001001$}.
+\end{example}
+
+\begin{definition}[Bounds, presented systems, the solution set]\formal{LSys.sol}
+A bound $B$ consists of a maximal axiom length, a maximal rule length, and whether empty
+rules are allowed. A \emph{presented} system is an axiom together with an association list
+of rules; \texttt{allSystems}\,$(\Sigma,B)$ enumerates every presented system within $B$.
+The \emph{solution set} $\mathrm{sol}(\Sigma,B,w,n)$ is the list of presented systems in
+\texttt{allSystems} that derive $w$ in $n$ steps.
+\end{definition}
+
+\begin{definition}[The search]\formal{LSys.infer}
+\texttt{infer}\,$(\Sigma,B,w,n,\mathrm{fuel})$ is a depth-first search that builds the
+derivation tree of $w$ leftmost-first, inventing rule symbols one at a time and sharing each
+rule across all of its occurrences; it prunes a branch as soon as the leaves still owed by
+the stack cannot fit in the remainder of $w$. The \texttt{fuel} argument bounds recursion
+depth.
+\end{definition}
+
+\begin{definition}[Canonical form]\formal{LSys.canon}
+Two presented systems are identified by $\mathrm{canon}$ when they have the same axiom and
+agree on every symbol that is actually rewritten during the first $n$ steps.
+\end{definition}
+
+\section{Existence}
+
+\begin{theorem}[Trivial existence]\formal{Paper.exists_trivial}
+For every word \var{w}{List nat}{$w$} and every \var{n}{nat}{$n$},
+\concl{exists S : DOL nat, S.derive n = w}{there is a D0L system $S$ with $S.\mathrm{derive}(n)=w$}.
+\end{theorem}
+\begin{proof}
+Take axiom $w$ and the identity rules.
+\end{proof}
+
+\begin{theorem}[One hidden symbol]\formal{Paper.exists_hidden}
+For every word \var{w}{List nat}{$w$} and every \var{n}{nat}{$n$} with
+\hyp{h_pos}{1 <= n}{$n\ge 1$}, \concl{exists S : DOL (Option nat), S.start.length = 1 /\ S.derive n = List.map some w}{%
+there is a system over $\Sigma\cup\{\#\}$ with an axiom of length $1$ deriving $w$ in $n$ steps}.
+\end{theorem}
+\begin{proof}
+Axiom $\#$, rule $\#\mapsto w$, identity on $\Sigma$.
+\end{proof}
+
+\begin{theorem}[Chain]\formal{Paper.chain_exists}
+Let \var{w,cs}{List nat}{$w$ be a word and $c_0,\dots,c_{n-1}$} a list of
+\hyp{h_nodup}{List.Nodup cs}{distinct} letters,
+\hyp{h_sub}{forall c, c ∈ cs -> c ∈ w}{each occurring in $w$}, of
+\hyp{h_len}{cs.length = n}{length \var{n}{nat}{$n$}} with \hyp{h_pos}{1 <= n}{$n\ge1$}.
+Then \concl{exists S : DOL nat, S.start.length = 1 /\ S.derive n = w /\ (forall a, a ∈ S.start -> a ∈ w) /\ forall a, a ∉ w -> S.rule a = [a]}{%
+there is a system with a one-letter axiom, deriving $w$ in $n$ steps, whose axiom letter
+lies in $w$ and whose rules are the identity outside the letters of $w$}.
+\end{theorem}
+\begin{proof}
+$c_0\mapsto c_1\mapsto\cdots\mapsto c_{n-1}\mapsto w$.
+\end{proof}
+
+\section{The search is exact}
+
+\begin{theorem}[Completeness]\formal{Paper.infer_complete}
+Let \var{sigma}{List nat}{$\Sigma$} be an alphabet, \var{B}{Bounds}{$B$} a bound,
+\var{w}{List nat}{$w$} a word, \var{n}{nat}{$n$} a step count and \var{P}{Presented nat}{$P$}
+a presented system with \hyp{h_sol}{P ∈ sol sigma B w n}{$P\in\mathrm{sol}(\Sigma,B,w,n)$}.
+Then \concl{exists fuel, exists Q, Q ∈ infer sigma B w n fuel /\ canon sigma n Q = canon sigma n P}{%
+for some fuel, the search emits a system $Q$ with $\mathrm{canon}(Q)=\mathrm{canon}(P)$}.
+\end{theorem}
+
+\begin{theorem}[Soundness]\formal{Paper.infer_sound}
+Let \var{sigma}{List nat}{$\Sigma$}, \var{B}{Bounds}{$B$}, \var{w}{List nat}{$w$},
+\var{n}{nat}{$n$} be as above, with \hyp{h_sub}{forall c, c ∈ w -> c ∈ sigma}{$w\in\Sigma^*$},
+\hyp{h_ne}{w ≠ []}{$w$ nonempty} and \hyp{h_rule}{1 <= B.maxRule}{rules of length $1$ allowed}.
+If \var{Q}{Presented nat}{$Q$} is emitted by the search with any \var{fuel}{nat}{fuel},
+\hyp{h_inf}{Q ∈ infer sigma B w n fuel}{$Q\in\texttt{infer}(\Sigma,B,w,n,\mathrm{fuel})$}, then
+\concl{exists P, P ∈ sol sigma B w n /\ canon sigma n Q = canon sigma n P}{%
+there is $P\in\mathrm{sol}(\Sigma,B,w,n)$ with $\mathrm{canon}(Q)=\mathrm{canon}(P)$}.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+Completeness: fix a solution, lift it to a system over $\Sigma\cup\{\#\}$ whose $\#$-rule is
+the axiom, and show by induction on fuel that the search state stays \emph{on the path} of
+that system---the leaves still owed by the stack are exactly the unread suffix of $w$, closed
+rules are exact and open rules are prefixes---while a measure
+$3\cdot\text{pending}+2\cdot|\text{stack}|+\text{leaves}+\text{slack}$ strictly decreases.
+The pruning test is a lower bound on the owed leaves, so it never fires on the path.
+Soundness is the mirror image: induct backwards from the emitted key, read a system off the
+final rule table, and carry an extension relation between the current and final tables.
+The three side hypotheses are genuine: each is a degenerate input on which the search and
+the brute-force set differ.
+\end{proof}
+
+\section{Impossibility and counting}
+
+\begin{theorem}[Unary alphabet]\formal{Paper.unary_iff}
+For \var{L,n}{nat}{$L,n$} with \hyp{h_L}{1 <= L}{$L\ge1$} and \hyp{h_n}{1 <= n}{$n\ge1$},
+\concl{(exists S : DOL Unit, S.start.length < L /\ S.derive n = List.replicate L ()) <-> exists m, 2 <= m /\ m ^ n ∣ L}{%
+the word $a^L$ is derived in $n$ steps by a one-letter system with an axiom shorter than $L$
+if and only if $m^n\mid L$ for some $m\ge2$}.
+\end{theorem}
+\begin{proof}
+$|f^n(a^j)|=j\,|f(a)|^n$; $|f(a)|\in\{0,1\}$ forces $L=0$ or $j=L$.
+\end{proof}
+
+\begin{theorem}[Counting under per-rule caps]\formal{Paper.exists_underivable}
+Let \var{sigma}{List nat}{$\Sigma$} be an alphabet \hyp{h_nodup}{List.Nodup sigma}{without repetitions},
+\var{B}{Bounds}{$B$} a bound and \var{n,L}{nat}{$n,L$} naturals with
+\hyp{h_count}{(allSystems sigma B).length < sigma.length ^ L}{fewer bounded systems than $|\Sigma|^L$}.
+Then \concl{exists w, w ∈ words sigma L /\ sol sigma B w n = []}{some word of length $L$ over $\Sigma$ has no bounded system at step $n$}.
+\end{theorem}
+
+\begin{theorem}[Incompressibility]\formal{Paper.exists_incompressible}
+Let \var{sigma}{List nat}{$\Sigma$} be \hyp{h_nodup}{List.Nodup sigma}{without repetitions},
+with $k=|\Sigma|$, and \var{n,L,s}{nat}{$n,L,s$} naturals with
+\hyp{h_count}{(sigma.length + 1) ^ (s + sigma.length + 1) < sigma.length ^ L}{$(k+1)^{s+k+1}<k^L$}.
+Then \concl{exists w, w ∈ words sigma L /\ forall S : DOL nat, (forall x, x ∈ S.start -> x ∈ sigma) -> (forall a, a ∈ sigma -> forall x, x ∈ S.rule a -> x ∈ sigma) -> (forall a, a ∉ sigma -> S.rule a = [a]) -> dsize sigma S <= s -> S.derive n ≠ w}{%
+some word of length $L$ over $\Sigma$ is not derived in $n$ steps by any system over $\Sigma$
+(identity outside $\Sigma$) whose description size $|\omega|+\sum_{a\in\Sigma}|f(a)|$ is at most $s$}.
+\end{theorem}
+\begin{proof}
+A system of size $\le s$ is encoded as $\omega\,\#\,f(a_1)\,\#\cdots\#\,f(a_k)\,\#\cdots\#$,
+padded to length $s+k+1$ over $\Sigma\cup\{\#\}$; decoding splits on $\#$. Pigeonhole on
+lists: a duplicate-free list contained in another is no longer.
+\end{proof}
+
+\section{The binary threshold}
+
+For the rest of the section, systems are over $\{a,b\}$, \emph{non-erasing} ($f(c)\ne\varepsilon$),
+and the axiom is strictly shorter than the derived word, which uses both letters.
+An \emph{insertion system} fixes one letter $x$ and sends the other to $x^p\,\bar x\,x^q$ with
+$p+q\ge1$. Write $F_n$ for the Fibonacci numbers ($F_0=0$, $F_1=1$) and
+$D(n)=2\cdot2^{\lfloor n/2\rfloor}$ for even $n$, $3\cdot2^{\lfloor n/2\rfloor}$ for odd $n$.
+
+\begin{definition}[Threshold]\formal{LSys.sharpT}
+$T(n)=\min(F_{n+1},D(n))$.
+\end{definition}
+
+\begin{example}\formal{Paper.sharpT_values}
+\concl{List.map sharpT (List.range 10) = [1, 1, 2, 3, 5, 8, 13, 21, 32, 48]}{$T(0),\dots,T(9)=1,1,2,3,5,8,13,21,32,48$}.
+\end{example}
+
+\begin{theorem}[Sharp bound]\formal{Paper.sharp_implies_insertion}
+Let \var{S}{DOL Bool}{$S$} be \hyp{h_ne}{forall a, S.rule a ≠ []}{non-erasing} and
+\var{n}{nat}{$n$}, \var{w}{List Bool}{$w$} with \hyp{h_der}{S.derive n = w}{$S.\mathrm{derive}(n)=w$},
+\hyp{h_short}{S.start.length < w.length}{$|\omega|<|w|$},
+\hyp{h_both}{forall c, c ∈ w}{$w$ containing both letters} and
+\hyp{h_small}{w.length < sharpT n}{$|w|<T(n)$}. Then
+\concl{exists x p q, S.rule x = [x] /\ S.rule (!x) = List.replicate p x ++ (!x) :: List.replicate q x /\ 1 <= p + q}{%
+$S$ is an insertion system}.
+\end{theorem}
+
+\begin{example}\formal{Paper.sharp_implies_insertion_nonvacuous}
+The hypotheses are satisfiable:
+\concl{exists (S : DOL Bool) (n : nat) (w : List Bool), (forall a, S.rule a ≠ []) /\ S.derive n = w /\ S.start.length < w.length /\ (forall c, c ∈ w) /\ w.length < sharpT n}{%
+$b\mapsto ab$, $a\mapsto a$, axiom $b$, $n=5$, $w=a^5b$}.
+\end{example}
+
+\begin{proof}[Proof sketch]
+If both rules have length $\ge2$ the length doubles each step. Otherwise some letter $x$ has
+$|f(x)|=1$. If $f(x)=x$, the number of $\bar x$'s is multiplied by $\beta=|f(\bar x)|_{\bar x}$
+each step: $\beta\ge2$ gives $|w|\ge2^n$, $\beta=0$ erases $\bar x$, so $\beta=1$ and $f(\bar x)=x^p\bar x x^q$.
+If $f(x)=\bar x$, the Parikh vector $(p,q)$ of $(x,\bar x)$ obeys $p'=\alpha q$, $q'=p+\beta q$:
+for $\alpha,\beta\ge1$ it dominates the Fibonacci recurrence and $|w|\ge F_{n+1}$; for $\beta=0$
+it scales by $\alpha\ge2$ every two steps and $|w|\ge D(n)$; $\alpha=0$ makes $w$ unary.
+\end{proof}
+
+Insertion words have an explicit description. For $x\in\{a,b\}$ let $\mathrm{runs}_x(w)$ be the
+list of lengths of the maximal $x$-blocks of $w$, separated by the occurrences of $\bar x$.
+
+\begin{definition}[Run-length criterion]\formal{LSys.Crit}
+$\mathrm{Crit}(n,x,w)$ holds when $w$ contains $\bar x$, every \emph{inner} run of
+$\mathrm{runs}_x(w)$ has length $\ge n$, and the leading or the trailing run has length $\ge n$.
+\end{definition}
+
+\begin{theorem}[Insertion words satisfy the criterion]\formal{Paper.crit_of_insertion}
+Let \var{S}{DOL Bool}{$S$} fix the letter \var{x}{Bool}{$x$}, \hyp{h_fix}{S.rule x = [x]}{$f(x)=x$},
+and send the other to \hyp{h_ins}{S.rule (!x) = List.replicate p x ++ (!x) :: List.replicate q x}{$f(\bar x)=x^p\bar x x^q$}
+with \var{p,q,n}{nat}{$p,q,n$} and \hyp{h_pq}{1 <= p + q}{$p+q\ge1$}. If
+\hyp{h_der}{S.derive n = w}{$S.\mathrm{derive}(n)=$\var{w}{List Bool}{$w$}} and
+\hyp{h_mem}{(!x) ∈ w}{$\bar x$ occurs in $w$}, then \concl{Crit n x w}{$\mathrm{Crit}(n,x,w)$}.
+\end{theorem}
+
+\begin{theorem}[Words meeting the criterion are insertion words]\formal{Paper.insertion_of_crit}
+Let \var{n}{nat}{$n$} with \hyp{h_n}{1 <= n}{$n\ge1$}, \var{x}{Bool}{$x$} a letter and
+\var{w}{List Bool}{$w$} a word with \hyp{h_crit}{Crit n x w}{$\mathrm{Crit}(n,x,w)$} whose
+\hyp{h_head}{n <= (runs x w).headD 0}{leading $x$-run has length $\ge n$}. Then
+\concl{exists S : DOL Bool, S.rule x = [x] /\ S.start.length < w.length /\ S.derive n = w}{%
+some system fixing $x$, with axiom shorter than $w$, derives $w$ in $n$ steps}.
+\end{theorem}
+\begin{proof}
+Remove $n$ copies of $x$ before every $\bar x$ to form the axiom; the rules $x\mapsto x$,
+$\bar x\mapsto x\bar x$ put them back. The trailing-run case is the reversal.
+\end{proof}
+
+\begin{proposition}[Sharpness, $n\le7$]\formal{Paper.sharp_witness_fib}
+Let $\mathrm{fib}$ be the system $a\mapsto ab$, $b\mapsto a$ with axiom $b$, and let
+\var{n}{nat}{$n$} satisfy \hyp{h_n}{n ∈ [2, 3, 4, 5, 6, 7]}{$2\le n\le7$}. Then
+\concl{(fibS.derive n).length = sharpT n /\ fibS.start.length < (fibS.derive n).length /\ ~Crit n false (fibS.derive n) /\ ~Crit n true (fibS.derive n)}{%
+the word $\mathrm{fib}.\mathrm{derive}(n)$ has length exactly $T(n)$, is longer
+than its axiom, and satisfies neither $\mathrm{Crit}(n,a,\cdot)$ nor $\mathrm{Crit}(n,b,\cdot)$}.
+\end{proposition}
+
+\begin{proposition}[Sharpness, $n=8,9$]\formal{Paper.sharp_witness_dbl}
+Let $\mathrm{dbl}$ be the system $a\mapsto b$, $b\mapsto aa$ with axiom $ab$, and let
+\var{n}{nat}{$n$} satisfy \hyp{h_n}{n ∈ [8, 9]}{$n\in\{8,9\}$}. Then
+\concl{(dblS.derive n).length = sharpT n /\ dblS.start.length < (dblS.derive n).length /\ ~Crit n false (dblS.derive n) /\ ~Crit n true (dblS.derive n)}{%
+the word $\mathrm{dbl}.\mathrm{derive}(n)$ has length exactly $T(n)$, is longer than
+its axiom, and satisfies neither criterion}.
+\end{proposition}
+
+Consequently, below $T(n)$ a binary word is derivable (non-erasing, short axiom) exactly when
+it satisfies $\mathrm{Crit}(n,a,\cdot)$ or $\mathrm{Crit}(n,b,\cdot)$, and $T(n)$ is attained for
+$2\le n\le 9$.
+
+\section{The open region}
+
+Above $T(n)$ the question is decidable (by the search) but no structural description is known.
+Exhaustive search for $n\le6$ and $|w|\le15$ shows three families: insertion, Fibonacci-type
+($a\mapsto ab$, $b\mapsto a$ and relatives, growth $\varphi^n$), and doubling
+($a\mapsto b$, $b\mapsto aa$, growth $\sqrt2^{\,n}$), together with longer-axiom mixtures such as
+$a^4b^4a^4$ at $n=4$ from $a\mapsto bb$, $b\mapsto a$, axiom $aba$.
+
+\begin{conjecture}[Sharpness for all $n$]
+$T(n)$ is the exact threshold for every $n\ge2$: the shortest non-insertion derivable words are
+the Fibonacci iterate for $n\le7$ and $a^{2^k}b^{2^k}$ for $n\ge8$. (The Parikh argument above
+already excludes anything shorter; only ``these specific words are never insertion words'' is
+open for general $n$.)
+\end{conjecture}
+
+\begin{conjecture}[Density]
+For fixed $n\ge3$ let $N_n(L)$ count the binary words of length $L$ with a non-erasing
+short-axiom system at step $n$. Then $N_n(L)^{1/L}\to\rho_n$, the dominant root of
+$x^{n+1}=x^n+1$, i.e.\ the growth rate of the insertion family. Every family with both letters
+active expands its axiom by a factor $\ge2^{\lfloor n/2\rfloor}$ and so has growth rate at most
+$2^{2^{-\lfloor n/2\rfloor}}$, exponentially closer to $1$.
+\end{conjecture}
+
+\section*{Formalization}
+All definitions and theorems above are tagged to \texttt{Paper.lean} (Lean 4.15, core library,
+no \texttt{sorry}); the tagged statements were checked against the formal signatures with the
+PFA checker. The exact algorithm and all auxiliary lemmas live in the \texttt{LSys} namespace;
+the paper-facing statements in \texttt{Paper} fix the alphabet to $\N$, $\mathsf{Unit}$ or
+$\mathsf{Bool}$ and are proved by appeal to the general ones.
+
+\end{document}
