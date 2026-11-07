@@ -1107,7 +1107,7 @@ theorem search_complete [DecidableEq α] (w : List α) (n : Nat) (sigma : List �
     cases stack with
     | nil =>
       obtain ⟨hpos, hkey⟩ := terminal w n sigma B T R pos hp
-      simp only [search, hpos, if_true, hkey, List.mem_singleton]
+      simp only [search, hpos, ite_true, hkey, List.mem_singleton]
     | cons f rest =>
       rcases f with ⟨sym, d, i⟩
       have hinv : pos + stackRem T n ((sym, d, i) :: rest) = w.length := by
@@ -1120,33 +1120,33 @@ theorem search_complete [DecidableEq α] (w : List α) (n : Nat) (sigma : List �
         hp.open_prefix hT.ne hinv
       rcases hb : lookupR R sym with ⟨body, closed⟩
       simp only [search, hb]
-      rw [if_neg hprune]
+      rw [ite_eq_right_right hprune]
       by_cases hi : i < body.length
-      · rw [dif_pos hi]
+      · rw [dite_eq_left hi]
         by_cases hd : d = n
         · subst hd
           obtain ⟨c, hw, hc, hp', hμ'⟩ := step_leaf w d sigma T R sym i rest pos hp body closed hb hi
-          rw [if_pos rfl, hw]
+          rw [ite_eq_left rfl, hw]
           simp only [hc, if_true]
           exact ih _ hp' (by omega)
-        · rw [if_neg hd]
+        · rw [ite_eq_right hd]
           obtain ⟨hp', hμ'⟩ := step_expand w n sigma T R sym d i rest pos hp body closed hb hi hd
           exact ih _ hp' (by omega)
-      · rw [dif_neg hi]
+      · rw [dite_eq_right hi]
         have hidx := hp.idx (sym, d, i) (List.mem_cons_self _ _)
         rw [hb] at hidx
         simp only at hidx
         have hi' : i = body.length := by omega
         cases closed with
         | true =>
-          rw [if_pos rfl]
+          rw [ite_eq_left rfl]
           have hbr : body = T.rule sym := by
             have := hp.closed_eq sym (by rw [hb]); rwa [hb] at this
           obtain ⟨hp', hμ'⟩ := step_pop w n sigma T R R sym d i rest pos hp body true hb hi' hbr hb
             (fun y _ => rfl)
           exact ih _ hp' (by omega)
         | false =>
-          rw [if_neg Bool.false_ne_true]
+          rw [ite_eq_right Bool.false_ne_true]
           by_cases hbr : body = T.rule sym
           · have hcond : (decide (1 ≤ body.length) || (B.allowEmpty && sym.isSome)) = true := by
               cases hae : B.allowEmpty
@@ -1169,17 +1169,17 @@ theorem search_complete [DecidableEq α] (w : List α) (n : Nat) (sigma : List �
           · obtain ⟨c, hlen, hget, hmax, hcs, hdn, hp', hμ'⟩ :=
               step_extend w n sigma B T hT R sym d i rest pos hp body hb hi' hbr
             apply List.mem_append_right
-            rw [if_pos hmax, List.mem_flatMap]
+            rw [ite_eq_left hmax, List.mem_flatMap]
             refine ⟨c, ?_, ih _ hp' (by omega)⟩
             by_cases hd : d = n
-            · rw [if_pos hd]
+            · rw [ite_eq_left hd]
               obtain ⟨c', hw, rfl⟩ := hdn hd
               rw [hw]
               have hc' : c' ∈ sigma := by
                 rw [List.mem_map] at hcs; obtain ⟨a, ha, hac⟩ := hcs
                 exact (Option.some.inj hac) ▸ ha
               simp [hc']
-            · rw [if_neg hd]; exact hcs
+            · rw [ite_eq_right hd]; exact hcs
 
 /-! ### Canonical form (rules of unused symbols are irrelevant) -/
 
@@ -1307,13 +1307,13 @@ theorem lookup_filterMap_some [DecidableEq α] (l : List α) (p : α → Prop) [
   | cons b l ih =>
     simp only [List.filterMap_cons]
     by_cases hb : p b
-    · rw [if_pos hb]
+    · rw [ite_eq_left hb]
       by_cases hab : a = b
       · subst hab; simp [List.lookup]
       · have : (a == b) = false := beq_false_of_ne hab
         simp only [List.lookup, this]
         exact ih (by rcases List.mem_cons.mp ha with rfl | h; exact absurd rfl hab; exact h)
-    · rw [if_neg hb]
+    · rw [ite_eq_right hb]
       exact ih (by rcases List.mem_cons.mp ha with rfl | h; exact absurd hp hb; exact h)
 
 theorem lookup_filterMap_none [DecidableEq α] (l : List α) (p : α → Prop) [DecidablePred p]
@@ -1326,10 +1326,10 @@ theorem lookup_filterMap_none [DecidableEq α] (l : List α) (p : α → Prop) [
     have hab : a ≠ b := fun h => ha (h ▸ List.mem_cons_self _ _)
     have hl : a ∉ l := fun h => ha (List.mem_cons_of_mem _ h)
     by_cases hb : p b
-    · rw [if_pos hb]
+    · rw [ite_eq_left hb]
       have := beq_false_of_ne hab
       simp only [List.lookup, this]; exact ih hl
-    · rw [if_neg hb]; exact ih hl
+    · rw [ite_eq_right hb]; exact ih hl
 
 theorem step_congr (S K : DOL α) (s : List α) (h : ∀ a ∈ s, K.rule a = S.rule a) :
     K.step s = S.step s := by
@@ -1388,8 +1388,8 @@ theorem canon_expectedKey [DecidableEq α] (sigma : List α) (B : Bounds) (n : N
     congr 2
     funext a
     by_cases h : a ∈ usedSymbols P.toDOL n
-    · rw [if_pos h, if_pos ((mem_usedT_lift_iff _ _ _).mpr h)]
-    · rw [if_neg h, if_neg (fun h' => h ((mem_usedT_lift_iff _ _ _).mp h'))]
+    · rw [ite_eq_left h, ite_eq_left ((mem_usedT_lift_iff _ _ _).mpr h)]
+    · rw [ite_eq_right h, ite_eq_right (fun h' => h ((mem_usedT_lift_iff _ _ _).mp h'))]
   rw [hkey]
   generalize hK : Presented.toDOL (P.1, sigma.map fun a =>
         (a, if a ∈ usedSymbols P.toDOL n then P.toDOL.rule a else defaultBody B a)) = K
@@ -1400,8 +1400,8 @@ theorem canon_expectedKey [DecidableEq α] (sigma : List α) (B : Bounds) (n : N
     intro a ha
     rw [← hK, toDOL_rule_mk, lookup_map_pair]
     by_cases hs : a ∈ sigma
-    · rw [if_pos hs]; simp only [if_pos ha]
-    · rw [if_neg hs, hB.rule_default a hs]
+    · rw [ite_eq_left hs]; simp only [ite_eq_left ha]
+    · rw [ite_eq_right hs, hB.rule_default a hs]
   have hst : K.start = P.toDOL.start := by rw [← hK]; rfl
   have hder := derive_eq_of_agree P.toDOL K n hst hrule
   have hused := usedSymbols_eq_of_agree P.toDOL K n hder
@@ -1411,8 +1411,8 @@ theorem canon_expectedKey [DecidableEq α] (sigma : List α) (B : Bounds) (n : N
   congr 2
   funext a
   by_cases h : a ∈ usedSymbols P.toDOL n
-  · rw [if_pos h, if_pos h, hrule a h]
-  · rw [if_neg h, if_neg h]
+  · rw [ite_eq_left h, ite_eq_left h, hrule a h]
+  · rw [ite_eq_right h, ite_eq_right h]
 
 /-- **Completeness corollary.** Every bounded solution is found by the search,
 up to rules of unused symbols. -/
@@ -1443,7 +1443,7 @@ theorem sol_subset_infer [DecidableEq α] (sigma : List α) (B : Bounds) (w : Li
       have h2 := hB.rule_len_hi a (by rw [hs]; exact List.mem_cons_self _ _)
       omega
   unfold infer
-  rw [if_pos hguard]
+  rw [ite_eq_left hguard]
   exact search_complete w n sigma B (lift P.toDOL) hT _ _ h0 (Nat.lt_succ_self _)
 
 /-! ### Soundness: forward side-conditions, the final system, and the extension relation -/
@@ -1506,7 +1506,7 @@ theorem lift_finalS_rule_closed [DecidableEq α] (sigma : List α) (B : Bounds) 
   | some a =>
     show (if (lookupR R (some a)).2 = true then (lookupR R (some a)).1.filterMap id
           else if a ∈ sigma then defaultBody B a else [a]).map some = _
-    rw [if_pos hx]
+    rw [ite_eq_left hx]
     exact map_some_filterMap_id _ (fun y hy => let ⟨a, _, h⟩ := hb y hy; ⟨a, h⟩)
 
 /-- `Rf` extends `R`: closed entries are kept verbatim, open bodies may grow. -/
@@ -1876,10 +1876,10 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
       split at hQ
       · simp at hQ
       by_cases hi : i < body.length
-      · rw [dif_pos hi] at hQ
+      · rw [dite_eq_left hi] at hQ
         by_cases hd : d = n
         · subst hd
-          rw [if_pos rfl] at hQ
+          rw [ite_eq_left rfl] at hQ
           cases hw' : w[pos]? with
           | none => rw [hw'] at hQ; simp at hQ
           | some c =>
@@ -1896,7 +1896,7 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
               · exact hcl (sym, d, i + 1) (List.mem_cons_self _ _)
               · exact hcl f (List.mem_cons_of_mem _ hf)
             · simp at hQ
-        · rw [if_neg hd] at hQ
+        · rw [ite_eq_right hd] at hQ
           obtain ⟨Rf, hQ', hRf, hinv, hcl⟩ :=
             ih _ (good_expand sigma B n R sym d i rest pos hg body closed hb hi hd) Q hQ
           have hdn := hg.depth (sym, d, i) (List.mem_cons_self _ _)
@@ -1906,14 +1906,14 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
           rcases List.mem_cons.mp hf with rfl | hf
           · exact hcl (sym, d, i + 1) (List.mem_cons_of_mem _ (List.mem_cons_self _ _))
           · exact hcl f (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ hf))
-      · rw [dif_neg hi] at hQ
+      · rw [dite_eq_right hi] at hQ
         have hidx := hg.idx (sym, d, i) (List.mem_cons_self _ _)
         rw [hb] at hidx
         simp only at hidx
         have hi' : i = body.length := by omega
         cases closed with
         | true =>
-          rw [if_pos rfl] at hQ
+          rw [ite_eq_left rfl] at hQ
           have hne : B.allowEmpty = false → body ≠ [] := fun hae => by
             have := hg.closed_ne sym (by rw [hb]) hae; rwa [hb] at this
           have hax : sym = none → body ≠ [] := fun hs => by
@@ -1927,7 +1927,7 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
           · have := (hinv.2 sym).1 (by rw [hb]); rw [this, hb]
           · exact hcl f hf
         | false =>
-          rw [if_neg Bool.false_ne_true, List.mem_append] at hQ
+          rw [ite_eq_right Bool.false_ne_true, List.mem_append] at hQ
           rcases hQ with hQ | hQ
           · split at hQ
             · rename_i hcond
@@ -1954,7 +1954,7 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
               · exact hcl f hf
             · simp at hQ
           · by_cases hmax : body.length < (if sym = none then B.maxAxiom else B.maxRule)
-            · rw [if_pos hmax, List.mem_flatMap] at hQ
+            · rw [ite_eq_left hmax, List.mem_flatMap] at hQ
               obtain ⟨c, hc, hQ⟩ := hQ
               have hca : ∃ a ∈ sigma, c = some a := by
                 split at hc
@@ -1964,8 +1964,8 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
                     rw [hw'] at hc
                     simp only at hc
                     by_cases hcs : c' ∈ sigma
-                    · rw [if_pos hcs] at hc; simp at hc; exact ⟨c', hcs, hc⟩
-                    · rw [if_neg hcs] at hc; simp at hc
+                    · rw [ite_eq_left hcs] at hc; simp at hc; exact ⟨c', hcs, hc⟩
+                    · rw [ite_eq_right hcs] at hc; simp at hc
                 · rw [List.mem_map] at hc
                   obtain ⟨a, ha, rfl⟩ := hc
                   exact ⟨a, ha, rfl⟩
@@ -1973,7 +1973,7 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
               obtain ⟨Rf, hQ', hRf, hinv, hcl⟩ :=
                 ih _ (good_extend sigma B n R sym d i rest pos hg body hb a ha (by omega)) Q hQ
               exact ⟨Rf, hQ', hRf, inv_extend w n sigma B R Rf sym d i rest pos body hb (some a) hinv, hcl⟩
-            · rw [if_neg hmax] at hQ; simp at hQ
+            · rw [ite_eq_right hmax] at hQ; simp at hQ
 
 /-! ### Master theorem
 
@@ -2028,37 +2028,37 @@ theorem finalS_bounded [DecidableEq α] (sigma : List α) (B : Bounds) (Rf : Rul
   · intro a ha
     rw [hrule]
     cases hc : (lookupR Rf (some a)).2
-    · rw [if_neg Bool.false_ne_true, if_pos ha]
+    · rw [ite_eq_right Bool.false_ne_true, ite_eq_left_left_left_left_left ha]
       unfold defaultBody
       by_cases h0 : B.maxRule = 0
-      · rw [if_pos h0]; simp only [List.length_nil]; rw [h0] at hguard; exact hguard
-      · rw [if_neg h0]; simp only [List.length_singleton]; split <;> omega
-    · rw [if_pos rfl, length_filterMap_id_of_some _ (hsome _)]
+      · rw [ite_eq_left h0]; simp only [List.length_nil]; rw [h0] at hguard; exact hguard
+      · rw [ite_eq_right h0]; simp only [List.length_singleton]; split <;> omega
+    · rw [ite_eq_left rfl, length_filterMap_id_of_some _ (hsome _)]
       cases hae : B.allowEmpty
-      · rw [if_neg Bool.false_ne_true]
+      · rw [ite_eq_right Bool.false_ne_true]
         exact List.length_pos.mpr (hR.closed_ne _ hc hae)
-      · rw [if_pos rfl]; exact Nat.zero_le _
+      · rw [ite_eq_left rfl]; exact Nat.zero_le _
   · intro a ha
     rw [hrule]
     cases hc : (lookupR Rf (some a)).2
-    · rw [if_neg Bool.false_ne_true, if_pos ha]
+    · rw [ite_eq_right Bool.false_ne_true, ite_eq_left ha]
       unfold defaultBody
       by_cases h0 : B.maxRule = 0
-      · rw [if_pos h0]; simp
-      · rw [if_neg h0]; simp only [List.length_singleton]; omega
-    · rw [if_pos rfl, length_filterMap_id_of_some _ (hsome _)]
+      · rw [ite_eq_left h0]; simp
+      · rw [ite_eq_right h0]; simp only [List.length_singleton]; omega
+    · rw [ite_eq_left rfl, length_filterMap_id_of_some _ (hsome _)]
       simpa using hR.len (some a)
   · intro a ha x hx
     rw [hrule] at hx
     cases hc : (lookupR Rf (some a)).2
-    · rw [hc, if_neg Bool.false_ne_true, if_pos ha] at hx
+    · rw [hc, ite_eq_right Bool.false_ne_true, ite_eq_left ha] at hx
       unfold defaultBody at hx
       by_cases h0 : B.maxRule = 0
-      · rw [if_pos h0] at hx; simp at hx
-      · rw [if_neg h0] at hx; simp at hx; subst hx; exact ha
-    · rw [hc, if_pos rfl] at hx; exact hmemS _ x hx
+      · rw [ite_eq_left h0] at hx; simp at hx
+      · rw [ite_eq_right h0] at hx; simp at hx; subst hx; exact ha
+    · rw [hc, ite_eq_left rfl] at hx; exact hmemS _ x hx
   · intro a ha
-    rw [hrule, hclosed_not_mem a ha, if_neg Bool.false_ne_true, if_neg ha]
+    rw [hrule, hclosed_not_mem a ha, ite_eq_right Bool.false_ne_true, ite_eq_right ha]
 
 /-- The emitted key is literally the presentation of `finalS`. -/
 theorem toKey_eq [DecidableEq α] (sigma : List α) (B : Bounds) (Rf : Rules α) :
@@ -2069,7 +2069,7 @@ theorem toKey_eq [DecidableEq α] (sigma : List α) (B : Bounds) (Rf : Rules α)
   apply List.map_congr_left
   intro a ha
   rcases h : lookupR Rf (some a) with ⟨b, c⟩
-  simp only [if_pos ha]
+  simp only [ite_eq_left ha]
 
 /-- **Soundness** (proved, no side conditions): every emitted key is a bounded solution. -/
 theorem infer_sound [DecidableEq α] (sigma : List α) (B : Bounds) (w : List α) (n : Nat) :
@@ -2078,7 +2078,7 @@ theorem infer_sound [DecidableEq α] (sigma : List α) (B : Bounds) (w : List α
   intro fuel Q hQ
   unfold infer at hQ
   by_cases hguard : (if B.allowEmpty then 0 else 1) ≤ B.maxRule
-  · rw [if_pos hguard] at hQ
+  · rw [ite_eq_left_left hguard] at hQ
     obtain ⟨Rf, hQk, hRf, ⟨hleaves, -⟩, hcl⟩ :=
       search_sound w n sigma B fuel _ (good_init sigma B n) Q hQ
     have hder : (finalS sigma B Rf).derive n = w := by
@@ -2107,8 +2107,8 @@ theorem infer_sound [DecidableEq α] (sigma : List α) (B : Bounds) (w : List α
         | some r => r | none => [a]) = (finalS sigma B Rf).rule a
       rw [lookup_map_pair]
       by_cases ha : a ∈ sigma
-      · rw [if_pos ha]
-      · rw [if_neg ha]; exact (hB.rule_default a ha).symm
+      · rw [ite_eq_left ha]
+      · rw [ite_eq_right ha]; exact (hB.rule_default a ha).symm
     unfold sol
     rw [List.mem_filter]
     refine ⟨?_, decide_eq_true (by rw [hPD]; exact hder)⟩
@@ -2119,7 +2119,7 @@ theorem infer_sound [DecidableEq α] (sigma : List α) (B : Bounds) (w : List α
       intro a ha
       exact mem_wordsUpTo_of sigma _ B.maxRule _ (hB.rule_len_lo a ha) (hB.rule_len_hi a ha)
         (hB.rule_mem a ha)
-  · rw [if_neg hguard] at hQ; simp at hQ
+  · rw [ite_eq_right hguard] at hQ; simp at hQ
 
 /-! ### Problem A: which `(w, n)` admit a non-trivial system over Σ(w)?
 
@@ -2478,8 +2478,8 @@ theorem decode_encode [DecidableEq α] (sigma : List α) (S : DOL α) (pad : Nat
     simp only [decodeS, hsegs, List.drop_succ_cons, List.drop_zero]
     rw [zip_map_append, lookup_map_pair]
     by_cases ha : a ∈ sigma
-    · rw [if_pos ha]
-    · rw [if_neg ha, hid a ha]
+    · rw [ite_eq_left ha]
+    · rw [ite_eq_right ha, hid a ha]
 
 theorem length_encodeS (sigma : List α) (S : DOL α) (pad : Nat) :
     (encodeS sigma S pad).length = dsize sigma S + sigma.length + 1 + pad := by
@@ -2715,7 +2715,7 @@ theorem derive_insertion (S : DOL Bool) (x : Bool) (p q : Nat) (hx : S.rule x = 
     funext c
     rcases (show c = x ∨ c = !x by cases x <;> cases c <;> simp) with rfl | rfl
     · simp [hx]
-    · simp only [Bool.not_eq_self, if_false]
+    · simp only [Bool.not_eq_self, ite_false]
       show S.step (List.replicate (n * p) x ++ (!x) :: List.replicate (n * q) x) = _
       rw [step_append, step_cons, step_replicate S x hx, step_replicate S x hx, hy]
       simp only [Nat.succ_mul, List.append_assoc, List.cons_append]
@@ -3136,7 +3136,7 @@ theorem runs_ne_nil (x : Bool) (w : List Bool) : runs x w ≠ [] := by
 
 theorem runs_x_cons (x : Bool) (t : List Bool) :
     runs x (x :: t) = ((runs x t).headD 0 + 1) :: (runs x t).drop 1 := by
-  simp only [runs, if_true]
+  simp only [runs, ite_true]
   split
   · rename_i r rs h; rw [h]; rfl
   · rename_i h; exact absurd h (runs_ne_nil x t)
@@ -3360,7 +3360,7 @@ theorem adjust_shrinkL (n : Nat) (rs : List Nat) (h2 : 2 ≤ rs.length)
       | cons r'' rs'' =>
         have hr' : n ≤ r' := hinner r' (by simp)
         have := ih (by simp) (fun q hq => hinner q (by
-          simp only [List.drop_succ_cons, List.drop_zero, List.dropLast_cons₂, List.mem_cons] at hq ⊢
+          simp only [List.drop_succ_cons, List.drop_zero, List.dropLast_cons_cons, List.mem_cons] at hq ⊢
           exact Or.inr hq)) (by simpa using hr')
         simp only [shrinkL] at this ⊢
         rw [show adjust n 0 ((r - n) :: (r' - n) :: shrinkL n (r'' :: rs''))
@@ -3732,7 +3732,7 @@ theorem block_not_crit (n : Nat) (hn : 1 ≤ n) (x : Bool) (M N : Nat) (hN : 2 �
   have : 0 ∈ ((M :: List.replicate N 0).drop 1).dropLast := by
     simp only [List.drop_succ_cons, List.drop_zero]
     obtain ⟨N', rfl⟩ : ∃ N', N = N' + 2 := ⟨N - 2, by omega⟩
-    rw [List.replicate_succ, List.replicate_succ, List.dropLast_cons₂]; simp
+    rw [List.replicate_succ, List.replicate_succ, List.dropLast_cons_cons]; simp
   have := hinner 0 this; omega
 
 theorem block_not_crit' (n : Nat) (hn : 1 ≤ n) (x : Bool) (M N : Nat) (hM : 2 ≤ M) :
@@ -3745,7 +3745,7 @@ theorem block_not_crit' (n : Nat) (hn : 1 ≤ n) (x : Bool) (M N : Nat) (hM : 2 
     simp only [List.replicate_succ, List.cons_append, List.drop_succ_cons, List.drop_zero]
     cases M' with
     | zero => simp
-    | succ M'' => rw [List.replicate_succ, List.cons_append, List.dropLast_cons₂]; simp
+    | succ M'' => rw [List.replicate_succ, List.cons_append, List.dropLast_cons_cons]; simp
   have := hinner 0 this; omega
 
 theorem dbl_not_crit (n : Nat) (hn : 2 ≤ n) (x : Bool) : ¬ Crit n x (dblS.derive n) := by
@@ -3770,9 +3770,9 @@ theorem dbl_length (n : Nat) :
   obtain ⟨d1, d2⟩ := dbl_closed (n / 2)
   rcases Nat.mod_two_eq_zero_or_one n with he | ho
   · rw [show 2 * (n / 2) = n by omega] at d1
-    rw [d1, if_pos he]; simp; omega
+    rw [d1, ite_eq_left he]; simp; omega
   · rw [show 2 * (n / 2) + 1 = n by omega] at d2
-    rw [d2, if_neg (by omega)]; simp [Nat.pow_succ]; omega
+    rw [d2, ite_eq_right (by omega)]; simp [Nat.pow_succ]; omega
 
 theorem dbl_both (n : Nat) : ∀ c, c ∈ dblS.derive n := by
   obtain ⟨d1, d2⟩ := dbl_closed (n / 2)
@@ -3817,12 +3817,12 @@ theorem sharpT_eq (n : Nat) :
     sharpT n = (if n ≤ 7 then fib (n + 1) else Dn n) := by
   unfold sharpT
   by_cases h : n ≤ 7
-  · rw [if_pos h]
+  · rw [ite_eq_left h]
     apply Nat.min_eq_left
     show fib (n + 1) ≤ Dn n
     rcases (show n = 0 ∨ n = 1 ∨ n = 2 ∨ n = 3 ∨ n = 4 ∨ n = 5 ∨ n = 6 ∨ n = 7 by omega)
       with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
     exact Nat.min_eq_right (Dn_le_fib n (by omega))
 
 /-- **Sharpness for all `n ≥ 2`** (proved). Some word of length exactly `T(n)` is derived in
@@ -3834,7 +3834,7 @@ theorem sharp_witness (n : Nat) (hn : 2 ≤ n) :
       ¬ Crit n false w ∧ ¬ Crit n true w := by
   rw [sharpT_eq]
   by_cases h : n ≤ 7
-  · rw [if_pos h]
+  · rw [ite_eq_left h]
     refine ⟨fibS, fibS.derive n, by decide, rfl, ?_, fib_both n hn, fib_length n, ?_, ?_⟩
     · rw [fib_length]
       show 1 < fib (n + 1)
@@ -3846,7 +3846,7 @@ theorem sharp_witness (n : Nat) (hn : 2 ≤ n) :
     · rcases (show n = 2 ∨ 3 ≤ n by omega) with rfl | h3
       · decide
       · exact fib_not_crit n h3 true
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
     refine ⟨dblS, dblS.derive n, by decide, rfl, ?_, dbl_both n, dbl_length n,
       dbl_not_crit n hn false, dbl_not_crit n hn true⟩
     rw [dbl_length]
