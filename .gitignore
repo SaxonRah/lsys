@@ -1,1 +1,8 @@
-/lsys/.idea
+.lake/
+*.olean
+*.ilean
+paper/*.aux
+paper/*.log
+paper/*.out
+__pycache__/
+.idea/

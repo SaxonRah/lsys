@@ -1,0 +1,15 @@
+name = "lsys"
+version = "0.2.0"
+defaultTargets = ["LSys", "Paper", "lsys"]
+
+[[lean_lib]]
+name = "LSys"
+roots = ["LSys", "LSys.Bounds"]
+
+[[lean_lib]]
+name = "Paper"
+srcDir = "paper"
+
+[[lean_exe]]
+name = "lsys"
+root = "Main"

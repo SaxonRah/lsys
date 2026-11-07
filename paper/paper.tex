@@ -24,11 +24,12 @@
 Given a word $w$ and a number of steps $n$, we ask for a D0L system (an axiom and
 context-free rewriting rules) that derives $w$ in exactly $n$ steps. We give a pruned
 backtracking search and prove it sound and complete against a brute-force specification;
-we prove existence theorems, a complete characterization over a one-letter alphabet, two
-pigeonhole bounds showing that most words have no small system; and, for a two-letter
-alphabet, a threshold $T(n)=\min(F_{n+1},D(n))$ below which every non-erasing solution
-with a short axiom is an \emph{insertion system}, together with a proof that $T(n)$ is attained
-for every $n\ge2$. Every statement is machine-checked in Lean~4
+we prove existence theorems, a complete characterization over a one-letter alphabet, pigeonhole
+bounds showing that most words have no small system (binary words of length $L$ need description
+size $L-2\log_2L-O(1)$); and, for a two-letter alphabet, a threshold $T(n)=\min(F_{n+1},D(n))$
+below which every non-erasing solution with a short axiom is an \emph{insertion system}, with an
+exact optimizer for that family, a proof that $T(n)$ is attained for every $n\ge2$, and a
+counterexample to a natural bounded-axiom conjecture above $T(n)$. Every statement is machine-checked in Lean~4
 (core library only, no \texttt{sorry}), and the statements in this paper are aligned to the
 formalization with PFA tags.
 \end{abstract}
@@ -264,6 +265,121 @@ Consequently, below $T(n)$ a binary word is derivable (non-erasing, short axiom)
 it satisfies $\mathrm{Crit}(n,a,\cdot)$ or $\mathrm{Crit}(n,b,\cdot)$, and the bound $T(n)$ is
 attained for every $n\ge2$.
 
+\section{Further bounds}
+
+\subsection{Incompressibility by direct counting}
+
+Theorem~14 counts padded codes over $\Sigma\cup\{\#\}$ and so, for the binary alphabet, only
+reaches description sizes $s\lesssim(\log_32)\,L\approx0.63L$. Counting descriptions directly
+removes the padding loss. A binary description is a triple $(\omega,f(a),f(b))$; those of
+total size $t$ correspond to a binary word of length $t$ with two cut positions $i\le j\le t$,
+so there are $2^t\binom{t+2}{2}$ of them. Write $A(s)=\sum_{t\le s}2^t\binom{t+2}{2}$
+(\texttt{descCount}).
+
+\begin{theorem}[Closed form]\formal{Paper.descCount_closed}
+For every \var{s}{nat}{$s$}, \concl{descCount s + 1 = 2 ^ s * (s * s + s + 1 + 1)}{$A(s)+1=2^s(s^2+s+2)$}.
+\end{theorem}
+
+\begin{theorem}[Incompressibility, $L-2\log_2L$ scale]\formal{Paper.exists_incompressible_log}
+Let \var{n,L,k,s}{nat}{$n,L,k,s$} with \hyp{h_k}{1 <= k}{$k\ge1$}, \hyp{h_L}{L <= 2 ^ k}{$L\le2^k$}
+and \hyp{h_s}{s + 2 * k <= L}{$s+2k\le L$}. Then
+\concl{exists w, w ∈ words [false, true] L /\ forall S : DOL Bool, dsize [false, true] S <= s -> S.derive n ≠ w}{%
+some binary word of length $L$ has no system of description size $\le s$ at step $n$}.
+\end{theorem}
+\begin{proof}
+Pigeonhole: the $2^L$ words cannot all be covered by the $A(s)$ descriptions when
+$A(s)<2^L$, and $A(s)<2^s(s+2)^2\le2^sL^2\le2^{s+2k}\le2^L$. Taking $k=\lceil\log_2L\rceil$
+gives $H_n(L)\ge L-2\lceil\log_2L\rceil$ for the worst-case minimum size $H_n(L)$, against the
+trivial upper bound $L+2$ (axiom $w$, identity rules). The same count shows that all but a
+$2^{-c}$ fraction of words need size $>L-2\lceil\log_2L\rceil-c$. For instance some word of
+length $64$ needs size $>52$, where Theorem~14 gives only $>37$.
+\end{proof}
+
+\subsection{The exact optimum over insertion systems}
+
+Theorems~20--21 decide \emph{whether} an insertion system fixing $x$ derives $w$; the same run
+data determines the \emph{best} one. For $w$ with $m\ge1$ occurrences of $\bar x$ and
+$\mathrm{runs}_x(w)=(r_0,\dots,r_m)$ let
+\[
+P_x(w,n)=\min\Bigl(\lfloor r_0/n\rfloor+\lfloor r_m/n\rfloor,\ \min_{0<i<m}\lfloor r_i/n\rfloor\Bigr)
+\]
+(\texttt{insP}; the inner minimum is absent when $m=1$). Let $\mathrm{opt}(n,x,w)$ be the
+insertion system with $p=\min(P_x,\lfloor r_0/n\rfloor)$, $q=P_x-p$, whose axiom is $w$ with
+$np$, $nP_x$, $nq$ copies of $x$ removed from the leading, inner and trailing runs
+(\texttt{optSys}, \texttt{optP}, \texttt{optQ}).
+
+\begin{theorem}[Insertion optimum]\formal{Paper.insertion_optimum}
+Let \var{n}{nat}{$n$} with \hyp{h_n}{1 <= n}{$n\ge1$}, \var{x}{Bool}{$x$} a letter and
+\var{w}{List Bool}{$w$} a word with \hyp{h_mem}{(!x) ∈ w}{$\bar x\in w$}. Then
+\concl{(optSys n x w).rule x = [x] /\ (optSys n x w).rule (!x) = List.replicate (optP n x w) x ++ (!x) :: List.replicate (optQ n x w) x /\ optP n x w + optQ n x w = insP n x w /\ (optSys n x w).derive n = w /\ (optSys n x w).start.length + n * w.count (!x) * insP n x w = w.length /\ forall (S : DOL Bool) (p q : nat), S.rule x = [x] -> S.rule (!x) = List.replicate p x ++ (!x) :: List.replicate q x -> S.derive n = w -> p + q <= insP n x w /\ (optSys n x w).start.length <= S.start.length}{%
+$\mathrm{opt}(n,x,w)$ is an insertion system with $p+q=P_x(w,n)$ deriving $w$, its axiom has
+length $|w|-n\,m\,P_x(w,n)$, and every insertion system fixing $x$ that derives $w$ has
+$p+q\le P_x(w,n)$ and an axiom at least as long}.
+\end{theorem}
+
+\begin{theorem}[Insertion optimum, description size]\formal{Paper.insertion_optimum_dsize}
+With \var{n}{nat}{$n$}, \hyp{h_n}{1 <= n}{$n\ge1$}, \var{x}{Bool}{$x$}, \var{w}{List Bool}{$w$},
+\hyp{h_mem}{(!x) ∈ w}{$\bar x\in w$} as above,
+\concl{dsize [x, !x] (optSys n x w) + (n * w.count (!x) - 1) * insP n x w = w.length + 2 /\ forall (S : DOL Bool) (p q : nat), S.rule x = [x] -> S.rule (!x) = List.replicate p x ++ (!x) :: List.replicate q x -> S.derive n = w -> dsize [x, !x] (optSys n x w) <= dsize [x, !x] S}{%
+$\mathrm{opt}(n,x,w)$ has description size $|w|+2-(nm-1)P_x(w,n)$, the minimum over all
+insertion systems fixing $x$ that derive $w$}.
+\end{theorem}
+
+\begin{theorem}[Optimum versus criterion]\formal{Paper.insP_pos_iff_crit}
+For \var{n}{nat}{$n$} with \hyp{h_n}{1 <= n}{$n\ge1$}, \var{x}{Bool}{$x$}, \var{w}{List Bool}{$w$}
+with \hyp{h_mem}{(!x) ∈ w}{$\bar x\in w$}: \concl{1 <= insP n x w <-> Crit n x w}{$P_x(w,n)\ge1$ iff $\mathrm{Crit}(n,x,w)$}.
+\end{theorem}
+\begin{proof}
+By the lemma \texttt{derive\_insertion} behind Theorem~17 the runs of $w$ are those of the axiom with $np$,
+$n(p+q)$, $nq$ added to the leading, inner and trailing runs; nonnegativity of the axiom's runs
+gives $p+q\le P_x$, and the stated $p,q$ make every subtracted run nonnegative. Each $\bar x$
+contributes $n(p+q)$ symbols, so $|\omega|=|w|-nm(p+q)$ and the description size is
+$|w|+2-(nm-1)(p+q)$, both minimized at $p+q=P_x$.
+\end{proof}
+
+Combined with Theorem~17: below $T(n)$, the global minimum axiom length and description size
+among non-erasing short-axiom solutions is the better of the two orientations $x\in\{a,b\}$
+with $P_x\ge1$, and there is no solution when $P_a=P_b=0$.
+
+\subsection{Expansion without a fixed letter}
+
+\begin{theorem}[Identity-free expansion]\formal{Paper.identity_free_expansion}
+Let \var{S}{DOL Bool}{$S$} be \hyp{h_ne}{forall a, S.rule a ≠ []}{non-erasing}, with
+\hyp{h_id}{forall a, S.rule a ≠ [a]}{neither letter fixed} and
+\hyp{h_big}{exists a, 2 <= (S.rule a).length}{some rule of length $\ge2$}, and let \var{n}{nat}{$n$}.
+Then \concl{2 ^ (n / 2) * S.start.length <= (S.derive n).length}{$2^{\lfloor n/2\rfloor}|\omega|\le|f^n(\omega)|$}.
+\end{theorem}
+\begin{proof}
+If both rules have length $\ge2$ one step already doubles. Otherwise one rule has length $1$
+and, not being an identity, maps $x\mapsto\bar x$ while $|f(\bar x)|\ge2$, so every letter at
+least doubles over two steps. The hypothesis on a long rule is needed: $a\mapsto b$, $b\mapsto a$
+only swaps. The factor is $2^{\lfloor n/2\rfloor}$, not $2^{n/2}$, for odd $n$.
+\end{proof}
+
+The fixed-letter case is where the heuristic ``every letter expands by $2^{n/2}$'' fails,
+and it fails for actual solutions:
+
+\begin{proposition}[A bounded-axiom conjecture fails]\formal{Paper.conjC_witness}
+\concl{exists S : DOL Bool, (forall a, S.rule a ≠ []) /\ S.derive 4 = cexW /\ S.start.length = 6 /\ cexW.length = 21 /\ ~Crit 4 false cexW /\ ~Crit 4 true cexW}{%
+The word $w=a^5b^{16}$ (length $21$) is derived in $4$ steps by the non-erasing system
+$a\mapsto a$, $b\mapsto bb$ from the axiom $a^5b$ of length $6$, and $w$ satisfies neither
+criterion}.
+\end{proposition}
+
+\begin{proposition}[\ldots and no shorter axiom exists]\formal{Paper.conjC_false}
+Let \var{S}{DOL Bool}{$S$} be \hyp{h_ne}{forall a, S.rule a ≠ []}{non-erasing} with
+\hyp{h_der}{S.derive 4 = cexW}{$S.\mathrm{derive}(4)=a^5b^{16}$}. Then
+\concl{6 <= S.start.length}{$|\omega|\ge6$}, whereas $\lfloor21/2^{4/2}\rfloor=5$.
+\end{proposition}
+\begin{proof}
+Rules of never-rewritten letters may be replaced by identities, and under non-erasing rules a
+rewritten letter has a rule no longer than $w$, so any solution with $|\omega|\le5$ would be
+found by the search with bounds $(5,21)$; by Theorem~10 (with fuel $10^6$, which exceeds the
+initial measure) it would appear in the output, and the kernel evaluates that output to the
+empty list. The family $a^kb^{2^n}$ with axiom $a^kb$ violates $|\omega|\le L/2^{n/2}$ exactly
+when $k>2^{n/2}$.
+\end{proof}
+
 \section{The open region}
 
 Above $T(n)$ the question is decidable (by the search) but no structural description is known.
@@ -275,9 +391,10 @@ $a^4b^4a^4$ at $n=4$ from $a\mapsto bb$, $b\mapsto a$, axiom $aba$.
 \begin{conjecture}[Density]
 For fixed $n\ge3$ let $N_n(L)$ count the binary words of length $L$ with a non-erasing
 short-axiom system at step $n$. Then $N_n(L)^{1/L}\to\rho_n$, the dominant root of
-$x^{n+1}=x^n+1$, i.e.\ the growth rate of the insertion family. Every family with both letters
-active expands its axiom by a factor $\ge2^{\lfloor n/2\rfloor}$ and so has growth rate at most
-$2^{2^{-\lfloor n/2\rfloor}}$, exponentially closer to $1$.
+$x^{n+1}=x^n+1$, i.e.\ the growth rate of the insertion family. Theorem~28 shows that every
+identity-free family expands its axiom by a factor $\ge2^{\lfloor n/2\rfloor}$ and so has growth
+rate at most $2^{2^{-\lfloor n/2\rfloor}}$; the fixed-letter non-insertion families
+(Propositions~29--30) and the union over rule pairs still need a separate counting argument.
 \end{conjecture}
 
 \section*{Formalization}

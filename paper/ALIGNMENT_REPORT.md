@@ -1,19 +1,22 @@
 # Alignment report: Inverse Inference of D0L Systems
 
 **Verdict:** ALIGNED
-The PFA checker returns `Result: PASS` on the final `paper.tex` against `Paper.lean` (22 tagged
-statements); every definition, theorem and example in the paper is tagged; no dependency on
+The PFA checker returns `Result: PASS` on the final `paper.tex` against `Paper.lean` (30 tagged
+statements; Lean 4.36.0-rc2); every definition, theorem and example in the paper is tagged; no dependency on
 `sorry` or non-standard axioms.
 
 ## Substantive mismatches
 None.
 
 ## Coverage
-Paper items not formalized: the two conjectures in §6 (stated as `conjecture*`, untagged by
-design: they are open problems, not theorems).
+Paper items not formalized: the density conjecture in §7 (stated as `conjecture*`, untagged by
+design: it is an open problem, not a theorem). The former bounded-axiom conjecture is now
+Propositions 29–30 (refuted), both tagged.
 
 Formal declarations with no paper counterpart: everything in the `LSys` namespace other than
-the tagged definitions (`DOL`, `DOL.derive`, `sol`, `infer`, `canon`, `sharpT`, `Crit`). These are
+the tagged definitions (`DOL`, `DOL.derive`, `sol`, `infer`, `canon`, `sharpT`, `Crit`), and the
+`LSys.Bounds` module (`insP`, `optSys`, `descCount`, `cexW`, `infer_complete_fuel`, …) whose
+headline results are tagged through `Paper` in §6. These are
 the general-alphabet versions of the paper's theorems and the auxiliary lemmas; each paper-facing
 theorem in `Paper` is proved by direct appeal to its `LSys` counterpart, so the paper statements
 are instances of the general ones (alphabet `Nat`, `Unit` or `Bool`).
