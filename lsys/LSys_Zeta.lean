@@ -1,5 +1,5 @@
 /-
-Inverse L-system inference, formalized (Lean 4.15 core, no Mathlib). No `sorry`.
+Inverse L-system inference, formalized (Lean 4.36.0-rc2 core, no Mathlib). No `sorry`.
 
 Master theorem, in two halves (both proved):
   infer_complete : every bounded solution in `sol` is emitted by the pruned search `infer`
@@ -332,7 +332,7 @@ theorem step_ne_nil (S : DOL α) (hne : ∀ a, S.rule a ≠ []) (s : List α) (h
   | cons a s =>
     rw [step_cons]
     intro h
-    exact hne a (List.append_eq_nil.mp h).1
+    exact hne a (List.append_eq_nil_iff.mp h).1
 
 theorem iter_ne_nil (S : DOL α) (hne : ∀ a, S.rule a ≠ []) (k : Nat) (s : List α)
     (hs : s ≠ []) : S.iter k s ≠ [] := by
@@ -346,7 +346,7 @@ theorem sum_map_le {β : Type} (l : List β) (f g : β → Nat) (h : ∀ x ∈ l
   | nil => exact Nat.le_refl _
   | cons a l ih =>
     simp only [List.map_cons, List.sum_cons]
-    have := h a (List.mem_cons_self a l)
+    have := h a (List.mem_cons_self)
     have := ih fun x hx => h x (List.mem_cons_of_mem a hx)
     omega
 
@@ -380,7 +380,7 @@ theorem minexp_le [DecidableEq α] (R : Rules α) (allowEmpty : Bool)
       · rename_i hae
         have hne' := hne (by cases allowEmpty <;> simp_all)
         have := iter_ne_nil T hne' (k + 1) [sym] (by simp)
-        exact List.length_pos.mpr this
+        exact List.length_pos_iff.mpr this
     · rw [hiter, List.length_append, length_iter]
       have := sum_map_le body (minexp R allowEmpty k) (fun c => (T.iter k [c]).length)
         (fun c _ => ih c)
@@ -405,7 +405,7 @@ theorem frameNeed_le [DecidableEq α] (R : Rules α) (ae : Bool) (T : DOL (Optio
   rw [hb] at hrest
   simp only at hrest
   have hdrop : (T.rule sym).drop i = body.drop i ++ rest.drop (i - body.length) := by
-    rw [← hrest, List.drop_append_eq_append_drop]
+    rw [← hrest, List.drop_append]
   have hsum : ((body.drop i).map (minexp R ae (n - d))).sum
       ≤ (T.iter (n - d) (body.drop i)).length := by
     rw [length_iter]
@@ -420,9 +420,9 @@ theorem frameNeed_le [DecidableEq α] (R : Rules α) (ae : Bool) (T : DOL (Optio
     have hne' := hne hae
     have hrest_ne : rest ≠ [] := by
       intro h0; apply hne' sym; rw [← hrest, h0]; rfl
-    have := List.length_pos.mpr (iter_ne_nil T hne' (n - d) (rest.drop 0) (by simpa using hrest_ne))
+    have := List.length_pos_iff.mpr (iter_ne_nil T hne' (n - d) (rest.drop 0) (by simpa using hrest_ne))
     simp [iter_nil]
-    simpa using this
+    exact this
   · omega
 
 theorem need_le [DecidableEq α] (R : Rules α) (ae : Bool) (T : DOL (Option α))
@@ -484,7 +484,7 @@ def usedT (T : DOL (Option α)) (n : Nat) : List (Option α) :=
 theorem mem_rule_mem_step (S : DOL α) (s : List α) (a : α) (ha : a ∈ s) (x : α)
     (hx : x ∈ S.rule a) : x ∈ S.step s := by
   induction s with
-  | nil => exact absurd ha (List.not_mem_nil a)
+  | nil => exact absurd ha (List.not_mem_nil)
   | cons b s ih =>
     rw [step_cons, List.mem_append]
     rcases List.mem_cons.mp ha with rfl | h
@@ -520,7 +520,7 @@ theorem mem_ruleTables [DecidableEq α] (sigma : List α) (bodies : List (List �
     (t : List (α × List α)) (h : t ∈ ruleTables sigma bodies) :
     ∀ a ∈ sigma, ∃ b ∈ bodies, t.lookup a = some b := by
   induction sigma generalizing t with
-  | nil => intro a ha; exact absurd ha (List.not_mem_nil a)
+  | nil => intro a ha; exact absurd ha (List.not_mem_nil)
   | cons c sigma ih =>
     simp only [ruleTables, List.foldr_cons, List.mem_flatMap, List.mem_map] at h
     obtain ⟨b, hb, t', ht', rfl⟩ := h
@@ -554,7 +554,7 @@ theorem lookup_ruleTables_none [DecidableEq α] (sigma : List α) (bodies : List
     simp only [ruleTables, List.foldr_cons, List.mem_flatMap, List.mem_map] at h
     obtain ⟨b, hb, t', ht', rfl⟩ := h
     intro a ha
-    have hac : a ≠ c := fun h => ha (h ▸ List.mem_cons_self _ _)
+    have hac : a ≠ c := fun h => ha (h ▸ List.mem_cons_self)
     have : (a == c) = false := beq_false_of_ne hac
     simp only [List.lookup, this]
     exact ih t' ht' a (fun h => ha (List.mem_cons_of_mem _ h))
@@ -676,7 +676,7 @@ theorem mem_iter_syms [DecidableEq α] (sigma : List α) (B : Bounds) (T : DOL (
       | cons a s ihs =>
         rw [step_cons, List.mem_append] at hxs
         rcases hxs with h | h
-        · exact List.mem_cons_of_mem _ (hT.mem a (hs a (List.mem_cons_self _ _)) x h)
+        · exact List.mem_cons_of_mem _ (hT.mem a (hs a (List.mem_cons_self)) x h)
         · exact ihs (fun y hy => hs y (List.mem_cons_of_mem _ hy)) h
     exact this _ (fun y hy => ih y hy) hx
 
@@ -699,14 +699,14 @@ theorem length_flatMap_append {β γ : Type} (l : List β) (f g : β → List γ
 theorem sum_map_lt {β : Type} (l : List β) (f g : β → Nat) (h : ∀ x ∈ l, g x ≤ f x)
     (x₀ : β) (hx₀ : x₀ ∈ l) (hlt : g x₀ < f x₀) : (l.map g).sum < (l.map f).sum := by
   induction l with
-  | nil => exact absurd hx₀ (List.not_mem_nil _)
+  | nil => exact absurd hx₀ (List.not_mem_nil)
   | cons a l ih =>
     simp only [List.map_cons, List.sum_cons]
     have hle := sum_map_le l g f (fun x hx => h x (List.mem_cons_of_mem a hx))
     rcases List.mem_cons.mp hx₀ with rfl | hx
     · omega
     · have := ih (fun x hx => h x (List.mem_cons_of_mem a hx)) hx
-      have := h a (List.mem_cons_self a l)
+      have := h a (List.mem_cons_self)
       omega
 
 /-- `drop i` of a list with a known prefix, at an index inside the prefix. -/
@@ -723,7 +723,7 @@ theorem drop_eq_cons_getElem? (l : List β) (p : Nat) (a : β) (t : List β)
     apply Nat.lt_of_not_le
     intro hle
     rw [List.drop_eq_nil_of_le hle] at h
-    exact List.noConfusion h
+    exact nomatch h
   rw [List.drop_eq_getElem_cons hp] at h
   cases h
   exact ⟨List.getElem?_eq_getElem hp, rfl⟩
@@ -781,9 +781,9 @@ theorem next_leaf (w : List α) (pos : Nat) (c : Option α) (t : List (Option α
   have hlt : pos < w.length := by
     apply Nat.lt_of_not_le; intro hle
     rw [List.getElem?_eq_none hle] at h1
-    exact Option.noConfusion h1
+    exact nomatch h1
   cases hw : w[pos]? with
-  | none => rw [hw] at h1; exact Option.noConfusion h1
+  | none => rw [hw] at h1; exact nomatch h1
   | some c' =>
     rw [hw] at h1
     exact ⟨c', rfl, (Option.some.inj h1).symm, h2, hlt⟩
@@ -813,7 +813,7 @@ theorem step_leaf [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (T 
       · exact hp.idx f (List.mem_cons_of_mem _ hf)
     · intro f hf
       rcases List.mem_cons.mp hf with rfl | hf
-      · exact hp.level (sym, n, i) (List.mem_cons_self _ _)
+      · exact hp.level (sym, n, i) (List.mem_cons_self)
       · exact hp.level f (List.mem_cons_of_mem _ hf)
     · intro x hx
       have := hp.used x hx
@@ -861,7 +861,7 @@ theorem step_expand [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (
         = measure sigma n T ⟨R, (sym, d, i) :: rest, pos⟩ := by
   have hpre : body <+: T.rule sym := by have := hp.open_prefix sym; rwa [hb] at this
   have hdrop := drop_of_prefix body (T.rule sym) hpre i hi
-  have hlev := hp.level (sym, d, i) (List.mem_cons_self _ _)
+  have hlev := hp.level (sym, d, i) (List.mem_cons_self)
   have hdn : d < n := Nat.lt_of_le_of_ne hlev.1 hd
   have hm : n - d = (n - (d + 1)) + 1 := by omega
   have hcmem : body[i] ∈ T.rule sym := hpre.subset (List.getElem_mem hi)
@@ -937,7 +937,7 @@ theorem step_pop [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (T :
     OnPath w n T ⟨R', rest, pos⟩ ∧
       measure sigma n T ⟨R', rest, pos⟩ + 2 = measure sigma n T ⟨R, (sym, d, i) :: rest, pos⟩ := by
   have hdrop : (T.rule sym).drop i = [] := by rw [hi, hbr, List.drop_length]
-  have hlev := hp.level (sym, d, i) (List.mem_cons_self _ _)
+  have hlev := hp.level (sym, d, i) (List.mem_cons_self)
   have hsym_used : sym ∈ usedT T n := mem_usedT_of_level T n d hlev.1 sym hlev.2
   have hlk : ∀ x, (lookupR R' x).1 = (lookupR R x).1 := by
     intro x
@@ -995,7 +995,7 @@ theorem step_extend [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (
         < measure sigma n T ⟨R, (sym, d, i) :: rest, pos⟩ := by
   have hpre : body <+: T.rule sym := by have := hp.open_prefix sym; rwa [hb] at this
   obtain ⟨tail, htail⟩ := hpre
-  have hlev := hp.level (sym, d, i) (List.mem_cons_self _ _)
+  have hlev := hp.level (sym, d, i) (List.mem_cons_self)
   have hsyms : sym ∈ allSyms sigma := mem_iter_syms sigma B T hT d sym hlev.2
   cases tail with
   | nil => exact absurd (by rw [← htail, List.append_nil]) hbr
@@ -1107,7 +1107,7 @@ theorem search_complete [DecidableEq α] (w : List α) (n : Nat) (sigma : List �
     cases stack with
     | nil =>
       obtain ⟨hpos, hkey⟩ := terminal w n sigma B T R pos hp
-      simp only [search, hpos, if_true, hkey, List.mem_singleton]
+      simp only [search, hpos, ite_true, hkey, List.mem_singleton]
     | cons f rest =>
       rcases f with ⟨sym, d, i⟩
       have hinv : pos + stackRem T n ((sym, d, i) :: rest) = w.length := by
@@ -1120,47 +1120,47 @@ theorem search_complete [DecidableEq α] (w : List α) (n : Nat) (sigma : List �
         hp.open_prefix hT.ne hinv
       rcases hb : lookupR R sym with ⟨body, closed⟩
       simp only [search, hb]
-      rw [if_neg hprune]
+      rw [ite_eq_right hprune]
       by_cases hi : i < body.length
-      · rw [dif_pos hi]
+      · rw [dite_eq_left hi]
         by_cases hd : d = n
         · subst hd
           obtain ⟨c, hw, hc, hp', hμ'⟩ := step_leaf w d sigma T R sym i rest pos hp body closed hb hi
-          rw [if_pos rfl, hw]
-          simp only [hc, if_true]
+          rw [ite_eq_left rfl, hw]
+          simp only [hc, ite_true]
           exact ih _ hp' (by omega)
-        · rw [if_neg hd]
+        · rw [ite_eq_right hd]
           obtain ⟨hp', hμ'⟩ := step_expand w n sigma T R sym d i rest pos hp body closed hb hi hd
           exact ih _ hp' (by omega)
-      · rw [dif_neg hi]
-        have hidx := hp.idx (sym, d, i) (List.mem_cons_self _ _)
+      · rw [dite_eq_right hi]
+        have hidx := hp.idx (sym, d, i) (List.mem_cons_self)
         rw [hb] at hidx
         simp only at hidx
         have hi' : i = body.length := by omega
         cases closed with
         | true =>
-          rw [if_pos rfl]
+          rw [ite_eq_left rfl]
           have hbr : body = T.rule sym := by
             have := hp.closed_eq sym (by rw [hb]); rwa [hb] at this
           obtain ⟨hp', hμ'⟩ := step_pop w n sigma T R R sym d i rest pos hp body true hb hi' hbr hb
             (fun y _ => rfl)
           exact ih _ hp' (by omega)
         | false =>
-          rw [if_neg Bool.false_ne_true]
+          rw [ite_eq_right Bool.false_ne_true]
           by_cases hbr : body = T.rule sym
           · have hcond : (decide (1 ≤ body.length) || (B.allowEmpty && sym.isSome)) = true := by
               cases hae : B.allowEmpty
               · have hne := hT.ne hae sym
                 rw [← hbr] at hne
-                have := List.length_pos.mpr hne
+                have := List.length_pos_iff.mpr hne
                 simp; omega
               · cases sym with
                 | none =>
                   have hne : body ≠ [] := by rw [hbr]; exact hT.ne'
-                  have := List.length_pos.mpr hne
+                  have := List.length_pos_iff.mpr hne
                   simp; omega
                 | some a => simp
-            simp only [hcond, if_true]
+            simp only [hcond, ite_true]
             apply List.mem_append_left
             obtain ⟨hp', hμ'⟩ := step_pop w n sigma T R ((sym, (body, true)) :: R) sym d i rest pos
               hp body false hb hi' hbr (lookupR_cons_self R sym _)
@@ -1169,17 +1169,17 @@ theorem search_complete [DecidableEq α] (w : List α) (n : Nat) (sigma : List �
           · obtain ⟨c, hlen, hget, hmax, hcs, hdn, hp', hμ'⟩ :=
               step_extend w n sigma B T hT R sym d i rest pos hp body hb hi' hbr
             apply List.mem_append_right
-            rw [if_pos hmax, List.mem_flatMap]
+            rw [ite_eq_left hmax, List.mem_flatMap]
             refine ⟨c, ?_, ih _ hp' (by omega)⟩
             by_cases hd : d = n
-            · rw [if_pos hd]
+            · rw [ite_eq_left hd]
               obtain ⟨c', hw, rfl⟩ := hdn hd
               rw [hw]
               have hc' : c' ∈ sigma := by
                 rw [List.mem_map] at hcs; obtain ⟨a, ha, hac⟩ := hcs
                 exact (Option.some.inj hac) ▸ ha
               simp [hc']
-            · rw [if_neg hd]; exact hcs
+            · rw [ite_eq_right hd]; exact hcs
 
 /-! ### Canonical form (rules of unused symbols are irrelevant) -/
 
@@ -1278,7 +1278,7 @@ theorem mem_usedT_lift_iff [DecidableEq α] (S : DOL α) (n : Nat) (a : α) :
   constructor
   · intro h
     rcases mem_pend_single (lift S) n none (some a) h with h | h
-    · exact Option.noConfusion h
+    · exact nomatch h
     · rw [List.mem_flatMap] at h
       obtain ⟨j, hj, hx⟩ := h
       rw [List.mem_range] at hj
@@ -1303,17 +1303,17 @@ theorem lookup_filterMap_some [DecidableEq α] (l : List α) (p : α → Prop) [
     (g : α → List α) (a : α) (ha : a ∈ l) (hp : p a) :
     (l.filterMap fun x => if p x then some (x, g x) else none).lookup a = some (g a) := by
   induction l with
-  | nil => exact absurd ha (List.not_mem_nil _)
+  | nil => exact absurd ha (List.not_mem_nil)
   | cons b l ih =>
     simp only [List.filterMap_cons]
     by_cases hb : p b
-    · rw [if_pos hb]
+    · rw [ite_eq_left hb]
       by_cases hab : a = b
       · subst hab; simp [List.lookup]
       · have : (a == b) = false := beq_false_of_ne hab
         simp only [List.lookup, this]
         exact ih (by rcases List.mem_cons.mp ha with rfl | h; exact absurd rfl hab; exact h)
-    · rw [if_neg hb]
+    · rw [ite_eq_right hb]
       exact ih (by rcases List.mem_cons.mp ha with rfl | h; exact absurd hp hb; exact h)
 
 theorem lookup_filterMap_none [DecidableEq α] (l : List α) (p : α → Prop) [DecidablePred p]
@@ -1323,13 +1323,13 @@ theorem lookup_filterMap_none [DecidableEq α] (l : List α) (p : α → Prop) [
   | nil => rfl
   | cons b l ih =>
     simp only [List.filterMap_cons]
-    have hab : a ≠ b := fun h => ha (h ▸ List.mem_cons_self _ _)
+    have hab : a ≠ b := fun h => ha (h ▸ List.mem_cons_self)
     have hl : a ∉ l := fun h => ha (List.mem_cons_of_mem _ h)
     by_cases hb : p b
-    · rw [if_pos hb]
+    · rw [ite_eq_left hb]
       have := beq_false_of_ne hab
       simp only [List.lookup, this]; exact ih hl
-    · rw [if_neg hb]; exact ih hl
+    · rw [ite_eq_right hb]; exact ih hl
 
 theorem step_congr (S K : DOL α) (s : List α) (h : ∀ a ∈ s, K.rule a = S.rule a) :
     K.step s = S.step s := by
@@ -1337,7 +1337,7 @@ theorem step_congr (S K : DOL α) (s : List α) (h : ∀ a ∈ s, K.rule a = S.r
   | nil => rfl
   | cons a s ih =>
     simp only [step_cons]
-    rw [h a (List.mem_cons_self _ _), ih (fun b hb => h b (List.mem_cons_of_mem _ hb))]
+    rw [h a (List.mem_cons_self), ih (fun b hb => h b (List.mem_cons_of_mem _ hb))]
 
 /-- If `K` agrees with `S` on used symbols and on the axiom, derivations agree up to `n`. -/
 theorem derive_eq_of_agree [DecidableEq α] (S K : DOL α) (n : Nat) (hst : K.start = S.start)
@@ -1388,8 +1388,8 @@ theorem canon_expectedKey [DecidableEq α] (sigma : List α) (B : Bounds) (n : N
     congr 2
     funext a
     by_cases h : a ∈ usedSymbols P.toDOL n
-    · rw [if_pos h, if_pos ((mem_usedT_lift_iff _ _ _).mpr h)]
-    · rw [if_neg h, if_neg (fun h' => h ((mem_usedT_lift_iff _ _ _).mp h'))]
+    · rw [ite_eq_left h, ite_eq_left ((mem_usedT_lift_iff _ _ _).mpr h)]
+    · rw [ite_eq_right h, ite_eq_right (fun h' => h ((mem_usedT_lift_iff _ _ _).mp h'))]
   rw [hkey]
   generalize hK : Presented.toDOL (P.1, sigma.map fun a =>
         (a, if a ∈ usedSymbols P.toDOL n then P.toDOL.rule a else defaultBody B a)) = K
@@ -1400,8 +1400,8 @@ theorem canon_expectedKey [DecidableEq α] (sigma : List α) (B : Bounds) (n : N
     intro a ha
     rw [← hK, toDOL_rule_mk, lookup_map_pair]
     by_cases hs : a ∈ sigma
-    · rw [if_pos hs]; simp only [if_pos ha]
-    · rw [if_neg hs, hB.rule_default a hs]
+    · rw [ite_eq_left hs]; simp only [ite_eq_left ha]
+    · rw [ite_eq_right hs, hB.rule_default a hs]
   have hst : K.start = P.toDOL.start := by rw [← hK]; rfl
   have hder := derive_eq_of_agree P.toDOL K n hst hrule
   have hused := usedSymbols_eq_of_agree P.toDOL K n hder
@@ -1411,8 +1411,8 @@ theorem canon_expectedKey [DecidableEq α] (sigma : List α) (B : Bounds) (n : N
   congr 2
   funext a
   by_cases h : a ∈ usedSymbols P.toDOL n
-  · rw [if_pos h, if_pos h, hrule a h]
-  · rw [if_neg h, if_neg h]
+  · rw [ite_eq_left h, ite_eq_left h, hrule a h]
+  · rw [ite_eq_right h, ite_eq_right h]
 
 /-- **Completeness corollary.** Every bounded solution is found by the search,
 up to rules of unused symbols. -/
@@ -1437,13 +1437,13 @@ theorem sol_subset_infer [DecidableEq α] (sigma : List α) (B : Bounds) (w : Li
       rw [hs] at hm
       cases hst : P.toDOL.start with
       | nil => rw [hst] at this; simp at this
-      | cons c _ => exact absurd (hm c (by rw [hst]; exact List.mem_cons_self _ _)) (by simp)
+      | cons c _ => exact absurd (hm c (by rw [hst]; exact List.mem_cons_self)) (by simp)
     | cons a rest =>
-      have h1 := hB.rule_len_lo a (by rw [hs]; exact List.mem_cons_self _ _)
-      have h2 := hB.rule_len_hi a (by rw [hs]; exact List.mem_cons_self _ _)
+      have h1 := hB.rule_len_lo a (by rw [hs]; exact List.mem_cons_self)
+      have h2 := hB.rule_len_hi a (by rw [hs]; exact List.mem_cons_self)
       omega
   unfold infer
-  rw [if_pos hguard]
+  rw [ite_eq_left hguard]
   exact search_complete w n sigma B (lift P.toDOL) hT _ _ h0 (Nat.lt_succ_self _)
 
 /-! ### Soundness: forward side-conditions, the final system, and the extension relation -/
@@ -1492,7 +1492,7 @@ theorem map_some_filterMap_id (l : List (Option α)) (h : ∀ y ∈ l, ∃ a, y 
   induction l with
   | nil => rfl
   | cons y l ih =>
-    obtain ⟨a, rfl⟩ := h y (List.mem_cons_self _ _)
+    obtain ⟨a, rfl⟩ := h y (List.mem_cons_self)
     simp [List.filterMap_cons, ih (fun z hz => h z (List.mem_cons_of_mem _ hz))]
 
 theorem lift_finalS_rule_closed [DecidableEq α] (sigma : List α) (B : Bounds) (R : Rules α)
@@ -1506,7 +1506,7 @@ theorem lift_finalS_rule_closed [DecidableEq α] (sigma : List α) (B : Bounds) 
   | some a =>
     show (if (lookupR R (some a)).2 = true then (lookupR R (some a)).1.filterMap id
           else if a ∈ sigma then defaultBody B a else [a]).map some = _
-    rw [if_pos hx]
+    rw [ite_eq_left hx]
     exact map_some_filterMap_id _ (fun y hy => let ⟨a, _, h⟩ := hb y hy; ⟨a, h⟩)
 
 /-- `Rf` extends `R`: closed entries are kept verbatim, open bodies may grow. -/
@@ -1543,7 +1543,7 @@ theorem mem_words_of (sigma : List α) (v : List α) (hs : ∀ x ∈ v, x ∈ si
   | nil => simp [words]
   | cons a v ih =>
     simp only [List.length_cons, words, List.mem_flatMap, List.mem_map]
-    exact ⟨v, ih (fun x hx => hs x (List.mem_cons_of_mem _ hx)), a, hs a (List.mem_cons_self _ _), rfl⟩
+    exact ⟨v, ih (fun x hx => hs x (List.mem_cons_of_mem _ hx)), a, hs a (List.mem_cons_self), rfl⟩
 
 theorem mem_wordsUpTo_of (sigma : List α) (lo hi : Nat) (v : List α)
     (h1 : lo ≤ v.length) (h2 : v.length ≤ hi) (hs : ∀ x ∈ v, x ∈ sigma) :
@@ -1558,7 +1558,7 @@ theorem mem_ruleTables_of (sigma : List α) (bodies : List (List α)) (f : α �
   | nil => simp [ruleTables]
   | cons c sigma ih =>
     simp only [ruleTables, List.foldr_cons, List.map_cons, List.mem_flatMap, List.mem_map]
-    exact ⟨f c, hf c (List.mem_cons_self _ _), sigma.map (fun a => (a, f a)),
+    exact ⟨f c, hf c (List.mem_cons_self), sigma.map (fun a => (a, f a)),
       ih (fun a ha => hf a (List.mem_cons_of_mem _ ha)), rfl⟩
 
 theorem DOL.ext' (S K : DOL α) (hs : S.start = K.start) (hr : ∀ a, S.rule a = K.rule a) : S = K := by
@@ -1584,7 +1584,7 @@ theorem drop_pos_eq (w : List α) (pos : Nat) (c : α) (h : w[pos]? = some c) :
     (w.map some).drop pos = some c :: (w.map some).drop (pos + 1) := by
   have hp : pos < w.length := by
     apply Nat.lt_of_not_le; intro hle
-    rw [List.getElem?_eq_none hle] at h; exact Option.noConfusion h
+    rw [List.getElem?_eq_none hle] at h; exact nomatch h
   rw [List.drop_eq_getElem_cons (by simpa using hp), List.getElem_map]
   have : w[pos] = c := by
     have := List.getElem?_eq_getElem hp
@@ -1602,7 +1602,7 @@ theorem good_leaf [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R :
   · intro x ho hne
     obtain ⟨f, hf, hfx⟩ := hg.open_frame x ho hne
     rcases List.mem_cons.mp hf with rfl | hf
-    · exact ⟨(sym, n, i + 1), List.mem_cons_self _ _, hfx⟩
+    · exact ⟨(sym, n, i + 1), List.mem_cons_self, hfx⟩
     · exact ⟨f, List.mem_cons_of_mem _ hf, hfx⟩
   · intro f hf
     rcases List.mem_cons.mp hf with rfl | hf
@@ -1610,11 +1610,11 @@ theorem good_leaf [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R :
     · exact hg.idx f (List.mem_cons_of_mem _ hf)
   · intro f hf
     rcases List.mem_cons.mp hf with rfl | hf
-    · exact hg.depth (sym, n, i) (List.mem_cons_self _ _)
+    · exact hg.depth (sym, n, i) (List.mem_cons_self)
     · exact hg.depth f (List.mem_cons_of_mem _ hf)
   · intro f hf
     rcases List.mem_cons.mp hf with rfl | hf
-    · exact hg.syms (sym, n, i) (List.mem_cons_self _ _)
+    · exact hg.syms (sym, n, i) (List.mem_cons_self)
     · exact hg.syms f (List.mem_cons_of_mem _ hf)
 
 theorem inv_leaf [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B : Bounds)
@@ -1641,7 +1641,7 @@ theorem good_expand [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R
     (body : List (Option α)) (closed : Bool) (hb : lookupR R sym = (body, closed))
     (hi : i < body.length) (hd : d ≠ n) :
     Good sigma B n ⟨R, (body[i], d + 1, 0) :: (sym, d, i + 1) :: rest, pos⟩ := by
-  have hdn := hg.depth (sym, d, i) (List.mem_cons_self _ _)
+  have hdn := hg.depth (sym, d, i) (List.mem_cons_self)
   simp only at hdn
   have hcb : body[i] ∈ (lookupR R sym).1 := by rw [hb]; exact List.getElem_mem hi
   obtain ⟨a, ha, hca⟩ := hg.bodies sym _ hcb
@@ -1649,7 +1649,7 @@ theorem good_expand [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R
   · intro x ho hne
     obtain ⟨f, hf, hfx⟩ := hg.open_frame x ho hne
     rcases List.mem_cons.mp hf with rfl | hf
-    · exact ⟨(sym, d, i + 1), List.mem_cons_of_mem _ (List.mem_cons_self _ _), hfx⟩
+    · exact ⟨(sym, d, i + 1), List.mem_cons_of_mem _ (List.mem_cons_self), hfx⟩
     · exact ⟨f, List.mem_cons_of_mem _ (List.mem_cons_of_mem _ hf), hfx⟩
   · intro f hf
     rcases List.mem_cons.mp hf with rfl | hf
@@ -1668,7 +1668,7 @@ theorem good_expand [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R
     · show body[i] ∈ allSyms sigma
       rw [hca]; exact List.mem_cons_of_mem _ (List.mem_map.mpr ⟨a, ha, rfl⟩)
     rcases List.mem_cons.mp hf with rfl | hf
-    · exact hg.syms (sym, d, i) (List.mem_cons_self _ _)
+    · exact hg.syms (sym, d, i) (List.mem_cons_self)
     · exact hg.syms f (List.mem_cons_of_mem _ hf)
 
 theorem inv_expand [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) (B : Bounds)
@@ -1698,7 +1698,7 @@ theorem good_pop [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R R'
     (hother : ∀ y, y ≠ sym → lookupR R' y = lookupR R y)
     (hne : B.allowEmpty = false → body ≠ []) (hax : sym = none → body ≠ []) :
     Good sigma B n ⟨R', rest, pos⟩ := by
-  have hsym := hg.syms (sym, d, i) (List.mem_cons_self _ _)
+  have hsym := hg.syms (sym, d, i) (List.mem_cons_self)
   simp only at hsym
   have hlk : ∀ x, (lookupR R' x).1 = (lookupR R x).1 := by
     intro x
@@ -1768,7 +1768,7 @@ theorem good_extend [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R
     (a : α) (ha : a ∈ sigma)
     (hlen : body.length + 1 ≤ (if sym = none then B.maxAxiom else B.maxRule)) :
     Good sigma B n ⟨(sym, (body ++ [some a], false)) :: R, (sym, d, i) :: rest, pos⟩ := by
-  have hsym := hg.syms (sym, d, i) (List.mem_cons_self _ _)
+  have hsym := hg.syms (sym, d, i) (List.mem_cons_self)
   simp only at hsym
   refine ⟨?_, ?_, ?_, ?_, ?_, hg.depth, hg.syms, ?_, ?_⟩
   · intro x y hy
@@ -1790,7 +1790,7 @@ theorem good_extend [DecidableEq α] (sigma : List α) (B : Bounds) (n : Nat) (R
     · rw [lookupR_cons_ne R sym x _ hx] at hc ⊢; exact hg.closed_ne x hc hae
   · intro x ho hne
     by_cases hx : x = sym
-    · subst x; exact ⟨(sym, d, i), List.mem_cons_self _ _, rfl⟩
+    · subst x; exact ⟨(sym, d, i), List.mem_cons_self, rfl⟩
     · rw [lookupR_cons_ne R sym x _ hx] at ho hne; exact hg.open_frame x ho hne
   · intro f hf
     have := hg.idx f hf
@@ -1876,10 +1876,10 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
       split at hQ
       · simp at hQ
       by_cases hi : i < body.length
-      · rw [dif_pos hi] at hQ
+      · rw [dite_eq_left hi] at hQ
         by_cases hd : d = n
         · subst hd
-          rw [if_pos rfl] at hQ
+          rw [ite_eq_left rfl] at hQ
           cases hw' : w[pos]? with
           | none => rw [hw'] at hQ; simp at hQ
           | some c =>
@@ -1893,27 +1893,27 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
                 inv_leaf w d sigma B R Rf hRf sym i rest pos body closed hb hi c hw' hc hinv, ?_⟩
               intro f hf
               rcases List.mem_cons.mp hf with rfl | hf
-              · exact hcl (sym, d, i + 1) (List.mem_cons_self _ _)
+              · exact hcl (sym, d, i + 1) (List.mem_cons_self)
               · exact hcl f (List.mem_cons_of_mem _ hf)
             · simp at hQ
-        · rw [if_neg hd] at hQ
+        · rw [ite_eq_right hd] at hQ
           obtain ⟨Rf, hQ', hRf, hinv, hcl⟩ :=
             ih _ (good_expand sigma B n R sym d i rest pos hg body closed hb hi hd) Q hQ
-          have hdn := hg.depth (sym, d, i) (List.mem_cons_self _ _)
+          have hdn := hg.depth (sym, d, i) (List.mem_cons_self)
           refine ⟨Rf, hQ', hRf,
             inv_expand w n sigma B R Rf hRf sym d i rest pos body closed hb hi hd hdn hinv, ?_⟩
           intro f hf
           rcases List.mem_cons.mp hf with rfl | hf
-          · exact hcl (sym, d, i + 1) (List.mem_cons_of_mem _ (List.mem_cons_self _ _))
+          · exact hcl (sym, d, i + 1) (List.mem_cons_of_mem _ (List.mem_cons_self))
           · exact hcl f (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ hf))
-      · rw [dif_neg hi] at hQ
-        have hidx := hg.idx (sym, d, i) (List.mem_cons_self _ _)
+      · rw [dite_eq_right hi] at hQ
+        have hidx := hg.idx (sym, d, i) (List.mem_cons_self)
         rw [hb] at hidx
         simp only at hidx
         have hi' : i = body.length := by omega
         cases closed with
         | true =>
-          rw [if_pos rfl] at hQ
+          rw [ite_eq_left rfl] at hQ
           have hne : B.allowEmpty = false → body ≠ [] := fun hae => by
             have := hg.closed_ne sym (by rw [hb]) hae; rwa [hb] at this
           have hax : sym = none → body ≠ [] := fun hs => by
@@ -1927,7 +1927,7 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
           · have := (hinv.2 sym).1 (by rw [hb]); rw [this, hb]
           · exact hcl f hf
         | false =>
-          rw [if_neg Bool.false_ne_true, List.mem_append] at hQ
+          rw [ite_eq_right Bool.false_ne_true, List.mem_append] at hQ
           rcases hQ with hQ | hQ
           · split at hQ
             · rename_i hcond
@@ -1954,7 +1954,7 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
               · exact hcl f hf
             · simp at hQ
           · by_cases hmax : body.length < (if sym = none then B.maxAxiom else B.maxRule)
-            · rw [if_pos hmax, List.mem_flatMap] at hQ
+            · rw [ite_eq_left hmax, List.mem_flatMap] at hQ
               obtain ⟨c, hc, hQ⟩ := hQ
               have hca : ∃ a ∈ sigma, c = some a := by
                 split at hc
@@ -1964,8 +1964,8 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
                     rw [hw'] at hc
                     simp only at hc
                     by_cases hcs : c' ∈ sigma
-                    · rw [if_pos hcs] at hc; simp at hc; exact ⟨c', hcs, hc⟩
-                    · rw [if_neg hcs] at hc; simp at hc
+                    · rw [ite_eq_left hcs] at hc; simp at hc; exact ⟨c', hcs, hc⟩
+                    · rw [ite_eq_right hcs] at hc; simp at hc
                 · rw [List.mem_map] at hc
                   obtain ⟨a, ha, rfl⟩ := hc
                   exact ⟨a, ha, rfl⟩
@@ -1973,7 +1973,7 @@ theorem search_sound [DecidableEq α] (w : List α) (n : Nat) (sigma : List α) 
               obtain ⟨Rf, hQ', hRf, hinv, hcl⟩ :=
                 ih _ (good_extend sigma B n R sym d i rest pos hg body hb a ha (by omega)) Q hQ
               exact ⟨Rf, hQ', hRf, inv_extend w n sigma B R Rf sym d i rest pos body hb (some a) hinv, hcl⟩
-            · rw [if_neg hmax] at hQ; simp at hQ
+            · rw [ite_eq_right hmax] at hQ; simp at hQ
 
 /-! ### Master theorem
 
@@ -2015,50 +2015,50 @@ theorem finalS_bounded [DecidableEq α] (sigma : List α) (B : Bounds) (Rf : Rul
       have := hR.entry_syms _ this
       simp only [allSyms, List.mem_cons, List.mem_map] at this
       rcases this with h | ⟨b, hb, hab⟩
-      · exact Option.noConfusion h
+      · exact nomatch h
       · exact ha (Option.some.inj hab ▸ hb)
   have hrule : ∀ a, (finalS sigma B Rf).rule a
       = if (lookupR Rf (some a)).2 = true then (lookupR Rf (some a)).1.filterMap id
         else if a ∈ sigma then defaultBody B a else [a] := fun a => rfl
   refine ⟨?_, ?_, hmemS none, ?_, ?_, ?_, ?_⟩
-  · exact List.length_pos.mpr hne
+  · exact List.length_pos_iff.mpr hne
   · show ((lookupR Rf none).1.filterMap id).length ≤ B.maxAxiom
     rw [length_filterMap_id_of_some _ (hsome none)]
     simpa using hR.len none
   · intro a ha
     rw [hrule]
     cases hc : (lookupR Rf (some a)).2
-    · rw [if_neg Bool.false_ne_true, if_pos ha]
+    · rw [ite_eq_right Bool.false_ne_true, ite_eq_left ha]
       unfold defaultBody
       by_cases h0 : B.maxRule = 0
-      · rw [if_pos h0]; simp only [List.length_nil]; rw [h0] at hguard; exact hguard
-      · rw [if_neg h0]; simp only [List.length_singleton]; split <;> omega
-    · rw [if_pos rfl, length_filterMap_id_of_some _ (hsome _)]
+      · rw [ite_eq_left h0]; simp only [List.length_nil]; rw [h0] at hguard; exact hguard
+      · rw [ite_eq_right h0]; simp only [List.length_singleton]; split <;> omega
+    · rw [ite_eq_left rfl, length_filterMap_id_of_some _ (hsome _)]
       cases hae : B.allowEmpty
-      · rw [if_neg Bool.false_ne_true]
-        exact List.length_pos.mpr (hR.closed_ne _ hc hae)
-      · rw [if_pos rfl]; exact Nat.zero_le _
+      · rw [ite_eq_right Bool.false_ne_true]
+        exact List.length_pos_iff.mpr (hR.closed_ne _ hc hae)
+      · rw [ite_eq_left rfl]; exact Nat.zero_le _
   · intro a ha
     rw [hrule]
     cases hc : (lookupR Rf (some a)).2
-    · rw [if_neg Bool.false_ne_true, if_pos ha]
+    · rw [ite_eq_right Bool.false_ne_true, ite_eq_left ha]
       unfold defaultBody
       by_cases h0 : B.maxRule = 0
-      · rw [if_pos h0]; simp
-      · rw [if_neg h0]; simp only [List.length_singleton]; omega
-    · rw [if_pos rfl, length_filterMap_id_of_some _ (hsome _)]
+      · rw [ite_eq_left h0]; simp
+      · rw [ite_eq_right h0]; simp only [List.length_singleton]; omega
+    · rw [ite_eq_left rfl, length_filterMap_id_of_some _ (hsome _)]
       simpa using hR.len (some a)
   · intro a ha x hx
     rw [hrule] at hx
     cases hc : (lookupR Rf (some a)).2
-    · rw [hc, if_neg Bool.false_ne_true, if_pos ha] at hx
+    · rw [hc, ite_eq_right Bool.false_ne_true, ite_eq_left ha] at hx
       unfold defaultBody at hx
       by_cases h0 : B.maxRule = 0
-      · rw [if_pos h0] at hx; simp at hx
-      · rw [if_neg h0] at hx; simp at hx; subst hx; exact ha
-    · rw [hc, if_pos rfl] at hx; exact hmemS _ x hx
+      · rw [ite_eq_left h0] at hx; simp at hx
+      · rw [ite_eq_right h0] at hx; simp at hx; subst hx; exact ha
+    · rw [hc, ite_eq_left rfl] at hx; exact hmemS _ x hx
   · intro a ha
-    rw [hrule, hclosed_not_mem a ha, if_neg Bool.false_ne_true, if_neg ha]
+    rw [hrule, hclosed_not_mem a ha, ite_eq_right Bool.false_ne_true, ite_eq_right ha]
 
 /-- The emitted key is literally the presentation of `finalS`. -/
 theorem toKey_eq [DecidableEq α] (sigma : List α) (B : Bounds) (Rf : Rules α) :
@@ -2069,7 +2069,7 @@ theorem toKey_eq [DecidableEq α] (sigma : List α) (B : Bounds) (Rf : Rules α)
   apply List.map_congr_left
   intro a ha
   rcases h : lookupR Rf (some a) with ⟨b, c⟩
-  simp only [if_pos ha]
+  simp only [ite_eq_left ha]
 
 /-- **Soundness** (proved, no side conditions): every emitted key is a bounded solution. -/
 theorem infer_sound [DecidableEq α] (sigma : List α) (B : Bounds) (w : List α) (n : Nat) :
@@ -2078,7 +2078,7 @@ theorem infer_sound [DecidableEq α] (sigma : List α) (B : Bounds) (w : List α
   intro fuel Q hQ
   unfold infer at hQ
   by_cases hguard : (if B.allowEmpty then 0 else 1) ≤ B.maxRule
-  · rw [if_pos hguard] at hQ
+  · rw [ite_eq_left hguard] at hQ
     obtain ⟨Rf, hQk, hRf, ⟨hleaves, -⟩, hcl⟩ :=
       search_sound w n sigma B fuel _ (good_init sigma B n) Q hQ
     have hder : (finalS sigma B Rf).derive n = w := by
@@ -2089,7 +2089,7 @@ theorem infer_sound [DecidableEq α] (sigma : List α) (B : Bounds) (w : List α
       have := congrArg (List.filterMap id) hleaves
       rwa [filterMap_id_map_some, filterMap_id_map_some] at this
     have hstart : (finalS sigma B Rf).start ≠ [] := by
-      have hc := hcl (none, 0, 0) (List.mem_cons_self _ _)
+      have hc := hcl (none, 0, 0) (List.mem_cons_self)
       have := hRf.axiom_ne hc
       show (lookupR Rf none).1.filterMap id ≠ []
       intro h0
@@ -2107,8 +2107,8 @@ theorem infer_sound [DecidableEq α] (sigma : List α) (B : Bounds) (w : List α
         | some r => r | none => [a]) = (finalS sigma B Rf).rule a
       rw [lookup_map_pair]
       by_cases ha : a ∈ sigma
-      · rw [if_pos ha]
-      · rw [if_neg ha]; exact (hB.rule_default a ha).symm
+      · rw [ite_eq_left ha]
+      · rw [ite_eq_right ha]; exact (hB.rule_default a ha).symm
     unfold sol
     rw [List.mem_filter]
     refine ⟨?_, decide_eq_true (by rw [hPD]; exact hder)⟩
@@ -2119,7 +2119,7 @@ theorem infer_sound [DecidableEq α] (sigma : List α) (B : Bounds) (w : List α
       intro a ha
       exact mem_wordsUpTo_of sigma _ B.maxRule _ (hB.rule_len_lo a ha) (hB.rule_len_hi a ha)
         (hB.rule_mem a ha)
-  · rw [if_neg hguard] at hQ; simp at hQ
+  · rw [ite_eq_right hguard] at hQ; simp at hQ
 
 /-! ### Problem A: which `(w, n)` admit a non-trivial system over Σ(w)?
 
@@ -2232,7 +2232,7 @@ theorem lookup_zip_none [DecidableEq α] (cs : List α) (bs : List (List α)) (a
     cases bs with
     | nil => simp
     | cons b bs =>
-      have hne : a ≠ c := fun h => ha (h ▸ List.mem_cons_self _ _)
+      have hne : a ≠ c := fun h => ha (h ▸ List.mem_cons_self)
       have : (a == c) = false := beq_false_of_ne hne
       simp only [List.zip_cons_cons, List.lookup, this]
       exact ih bs (fun h => ha (List.mem_cons_of_mem _ h))
@@ -2288,14 +2288,14 @@ theorem nodup_subset_length_le [DecidableEq α] (l₁ l₂ : List α) (hnd : l�
   | nil => exact Nat.zero_le _
   | cons a t ih =>
     obtain ⟨hat, hnt⟩ := List.nodup_cons.mp hnd
-    have ha : a ∈ l₂ := hsub (List.mem_cons_self _ _)
+    have ha : a ∈ l₂ := hsub (List.mem_cons_self)
     have hsub' : t ⊆ l₂.erase a := by
       intro x hx
       have hxa : x ≠ a := fun h => hat (h ▸ hx)
       exact (List.mem_erase_of_ne hxa).mpr (hsub (List.mem_cons_of_mem _ hx))
     have := ih (l₂.erase a) hnt hsub'
     rw [List.length_erase_of_mem ha] at this
-    have : 1 ≤ l₂.length := List.length_pos.mpr (List.ne_nil_of_mem ha)
+    have : 1 ≤ l₂.length := List.length_pos_iff.mpr (List.ne_nil_of_mem ha)
     simp only [List.length_cons]; omega
 
 theorem nodup_flatMap {β γ : Type} (l : List β) (f : β → List γ) (hl : l.Nodup)
@@ -2308,14 +2308,14 @@ theorem nodup_flatMap {β γ : Type} (l : List β) (f : β → List γ) (hl : l.
     simp only [List.flatMap_cons]
     unfold List.Nodup
     rw [List.pairwise_append]
-    refine ⟨hf a (List.mem_cons_self _ _), ?_, ?_⟩
+    refine ⟨hf a (List.mem_cons_self), ?_, ?_⟩
     · exact ih hnl (fun x hx => hf x (List.mem_cons_of_mem _ hx))
         (fun x hx y hy => hdisj x (List.mem_cons_of_mem _ hx) y (List.mem_cons_of_mem _ hy))
     · intro z hz z' hz' hzz
       subst hzz
       rw [List.mem_flatMap] at hz'
       obtain ⟨y, hy, hzy⟩ := hz'
-      have := hdisj a (List.mem_cons_self _ _) y (List.mem_cons_of_mem _ hy) z hz hzy
+      have := hdisj a (List.mem_cons_self) y (List.mem_cons_of_mem _ hy) z hz hzy
       exact hal (this ▸ hy)
 
 theorem nodup_map_cons (sigma : List α) (v : List α) (hs : sigma.Nodup) :
@@ -2342,7 +2342,7 @@ theorem length_flatMap_const {β γ : Type} (l : List β) (f : β → List γ) (
   | nil => simp
   | cons a l ih =>
     simp only [List.flatMap_cons, List.length_append, List.length_cons]
-    rw [h a (List.mem_cons_self _ _), ih (fun x hx => h x (List.mem_cons_of_mem _ hx))]
+    rw [h a (List.mem_cons_self), ih (fun x hx => h x (List.mem_cons_of_mem _ hx))]
     rw [Nat.succ_mul]; omega
 
 theorem length_words (sigma : List α) (k : Nat) : (words sigma k).length = sigma.length ^ k := by
@@ -2350,7 +2350,7 @@ theorem length_words (sigma : List α) (k : Nat) : (words sigma k).length = sigm
   | zero => simp [words]
   | succ k ih =>
     simp only [words]
-    rw [length_flatMap_const _ _ sigma.length (fun _ _ => List.length_map _ _), ih, Nat.pow_succ]
+    rw [length_flatMap_const _ _ sigma.length (fun _ _ => List.length_map _), ih, Nat.pow_succ]
 
 theorem length_ruleTables (sigma : List α) (bodies : List (List α)) :
     (ruleTables sigma bodies).length = bodies.length ^ sigma.length := by
@@ -2359,14 +2359,14 @@ theorem length_ruleTables (sigma : List α) (bodies : List (List α)) :
   | cons c sigma ih =>
     show (bodies.flatMap fun b => (ruleTables sigma bodies).map fun t => (c, b) :: t).length = _
     rw [length_flatMap_const _ _ (ruleTables sigma bodies).length
-      (fun _ _ => List.length_map _ _), ih, List.length_cons, Nat.pow_succ, Nat.mul_comm]
+      (fun _ _ => List.length_map _), ih, List.length_cons, Nat.pow_succ, Nat.mul_comm]
 
 theorem length_allSystems (sigma : List α) (B : Bounds) :
     (allSystems sigma B).length
       = (wordsUpTo sigma 1 B.maxAxiom).length
         * (wordsUpTo sigma (if B.allowEmpty then 0 else 1) B.maxRule).length ^ sigma.length := by
   simp only [allSystems]
-  rw [length_flatMap_const _ _ _ (fun _ _ => List.length_map _ _), length_ruleTables]
+  rw [length_flatMap_const _ _ _ (fun _ _ => List.length_map _), length_ruleTables]
 
 /-- **Counting bound.** If there are fewer bounded systems than words of length `L`,
 some word of length `L` over `sigma` has no bounded system at step `n` — for every `n`. -/
@@ -2383,7 +2383,7 @@ theorem exists_underivable [DecidableEq α] (sigma : List α) (hs : sigma.Nodup)
     cases hsol : sol sigma B w n with
     | nil => exact absurd hsol this
     | cons P _ =>
-      have hP : P ∈ sol sigma B w n := by rw [hsol]; exact List.mem_cons_self _ _
+      have hP : P ∈ sol sigma B w n := by rw [hsol]; exact List.mem_cons_self
       have hA : P ∈ allSystems sigma B := (List.mem_filter.mp hP).1
       have hd := sol_sound sigma B w n P hP
       exact List.mem_map.mpr ⟨P, hA, hd⟩
@@ -2478,8 +2478,8 @@ theorem decode_encode [DecidableEq α] (sigma : List α) (S : DOL α) (pad : Nat
     simp only [decodeS, hsegs, List.drop_succ_cons, List.drop_zero]
     rw [zip_map_append, lookup_map_pair]
     by_cases ha : a ∈ sigma
-    · rw [if_pos ha]
-    · rw [if_neg ha, hid a ha]
+    · rw [ite_eq_left ha]
+    · rw [ite_eq_right ha, hid a ha]
 
 theorem length_encodeS (sigma : List α) (S : DOL α) (pad : Nat) :
     (encodeS sigma S pad).length = dsize sigma S + sigma.length + 1 + pad := by
@@ -2568,7 +2568,7 @@ theorem length_derive_pow (S : DOL α) (hk : ∀ a, 2 ≤ (S.rule a).length) (n 
 
 theorem length_step_mono (S : DOL α) (hne : ∀ a, S.rule a ≠ []) (s : List α) :
     s.length ≤ (S.step s).length := by
-  have := length_step_ge S 1 (fun a => List.length_pos.mpr (hne a)) s
+  have := length_step_ge S 1 (fun a => List.length_pos_iff.mpr (hne a)) s
   omega
 
 theorem length_derive_mono (S : DOL α) (hne : ∀ a, S.rule a ≠ []) (n : Nat) :
@@ -2647,7 +2647,7 @@ theorem count_step_fixed (S : DOL Bool) (x : Bool) (hx : S.rule x = [x]) (s : Li
     simp only [List.map_cons, List.sum_cons, ih]
     have hne : (!x) ≠ x := by cases x <;> decide
     rcases (show c = x ∨ c = !x by cases x <;> cases c <;> simp) with h | h <;> subst c
-    · rw [hx, List.count_cons_of_ne hne, List.count_cons_of_ne hne, List.count_nil]; omega
+    · rw [hx, List.count_cons_of_ne hne.symm, List.count_cons_of_ne hne.symm, List.count_nil]; omega
     · rw [List.count_cons_self, Nat.add_mul]; omega
 
 theorem count_derive_fixed (S : DOL Bool) (x : Bool) (hx : S.rule x = [x]) (n : Nat) :
@@ -2664,7 +2664,7 @@ theorem eq_replicate_of_count_zero (x : Bool) (l : List Bool) (h : l.count (!x) 
   | cons c l ih =>
     have hne : (!x) ≠ x := by cases x <;> decide
     rcases (show c = x ∨ c = !x by cases x <;> cases c <;> simp) with h' | h' <;> subst c
-    · rw [List.count_cons_of_ne hne] at h
+    · rw [List.count_cons_of_ne hne.symm] at h
       simp only [List.length_cons, List.replicate_succ]
       exact congrArg (x :: ·) (ih h)
     · rw [List.count_cons_self] at h; omega
@@ -2677,7 +2677,7 @@ theorem eq_insertion_of_count_one (x : Bool) (l : List Bool) (h : l.count (!x) =
   | cons c l ih =>
     have hne : (!x) ≠ x := by cases x <;> decide
     rcases (show c = x ∨ c = !x by cases x <;> cases c <;> simp) with h' | h' <;> subst c
-    · rw [List.count_cons_of_ne hne] at h
+    · rw [List.count_cons_of_ne hne.symm] at h
       obtain ⟨p, q, rfl⟩ := ih h
       exact ⟨p + 1, q, by simp [List.replicate_succ]⟩
     · rw [List.count_cons_self] at h
@@ -2715,11 +2715,11 @@ theorem derive_insertion (S : DOL Bool) (x : Bool) (p q : Nat) (hx : S.rule x = 
     funext c
     rcases (show c = x ∨ c = !x by cases x <;> cases c <;> simp) with rfl | rfl
     · simp [hx]
-    · simp only [Bool.not_eq_self, if_false]
+    · simp only [Bool.not_eq_self, ite_false]
       show S.step (List.replicate (n * p) x ++ (!x) :: List.replicate (n * q) x) = _
       rw [step_append, step_cons, step_replicate S x hx, step_replicate S x hx, hy]
       simp only [Nat.succ_mul, List.append_assoc, List.cons_append]
-      rw [← List.append_assoc, List.append_replicate_replicate, List.append_replicate_replicate,
+      rw [← List.append_assoc, List.replicate_append_replicate, List.replicate_append_replicate,
         Nat.add_comm q (n * q)]
 
 theorem small_implies_insertion_aux (S : DOL Bool) (n : Nat) (w : List Bool)
@@ -2733,7 +2733,7 @@ theorem small_implies_insertion_aux (S : DOL Bool) (n : Nat) (w : List Bool)
     have : S.start = [] := List.eq_nil_of_length_eq_zero (by omega)
     have : S.derive n = [] := by rw [derive_eq_iter, this, iter_nil]
     rw [hw] at this; subst this; simp at hboth
-  obtain ⟨y, hy⟩ := List.length_eq_one.mp h1
+  obtain ⟨y, hy⟩ := List.length_eq_one_iff.mp h1
   rcases (show y = x ∨ y = !x by cases x <;> cases y <;> simp) with hyx | hyx <;> subst y
   · -- rule x = [x]: count the moving letter
     have hcount := count_derive_fixed S x hy n
@@ -2779,7 +2779,7 @@ theorem small_implies_insertion_aux (S : DOL Bool) (n : Nat) (w : List Bool)
     | k + 2 =>
       rw [hk] at hcount
       have hcw : (S.start.count (!x)) * (k + 2) ^ n ≤ w.length :=
-        hcount ▸ List.count_le_length _ _
+        hcount ▸ List.count_le_length
       have h2n : 2 ^ n ≤ (k + 2) ^ n := Nat.pow_le_pow_left (by omega) n
       have h2h : 2 ^ (n / 2) ≤ 2 ^ n := Nat.pow_le_pow_right (by omega) (by omega)
       have : 1 * 2 ^ n ≤ S.start.count (!x) * (k + 2) ^ n :=
@@ -2794,7 +2794,7 @@ theorem small_implies_insertion_aux (S : DOL Bool) (n : Nat) (w : List Bool)
       omega
     · have hall : ∀ a, (S.rule a).length = 1 := by
         intro a
-        have := List.length_pos.mpr (hne (!x))
+        have := List.length_pos_iff.mpr (hne (!x))
         rcases (show a = x ∨ a = !x by cases x <;> cases a <;> simp) with rfl | rfl
         · exact h1
         · omega
@@ -2815,7 +2815,7 @@ theorem small_implies_insertion (S : DOL Bool) (n : Nat) (w : List Bool)
     exact ⟨x, p, q, h1, h2, h3⟩
   · have hk : ∀ a, 2 ≤ (S.rule a).length := by
       intro a
-      have := List.length_pos.mpr (hne a)
+      have := List.length_pos_iff.mpr (hne a)
       have : (S.rule a).length ≠ 1 := fun h1 => h ⟨a, h1⟩
       omega
     have := length_derive_pow S hk n
@@ -2872,8 +2872,8 @@ theorem count_add_count_not (x : Bool) (l : List Bool) : l.count x + l.count (!x
   | cons c l ih =>
     have hne : (!x) ≠ x := by cases x <;> decide
     rcases (show c = x ∨ c = !x by cases x <;> cases c <;> simp) with h | h <;> subst c
-    · rw [List.count_cons_self, List.count_cons_of_ne hne, List.length_cons]; omega
     · rw [List.count_cons_self, List.count_cons_of_ne hne.symm, List.length_cons]; omega
+    · rw [List.count_cons_self, List.count_cons_of_ne hne.symm.symm, List.length_cons]; omega
 
 /-- Two-letter count recurrence for one step. -/
 theorem count_step_bool (S : DOL Bool) (x y : Bool) (s : List Bool) :
@@ -2885,8 +2885,8 @@ theorem count_step_bool (S : DOL Bool) (x y : Bool) (s : List Bool) :
     simp only [List.map_cons, List.sum_cons, ih]
     have hne : (!x) ≠ x := by cases x <;> decide
     rcases (show c = x ∨ c = !x by cases x <;> cases c <;> simp) with h | h <;> subst c
-    · rw [List.count_cons_self, List.count_cons_of_ne hne, Nat.succ_mul]; omega
     · rw [List.count_cons_self, List.count_cons_of_ne hne.symm, Nat.succ_mul]; omega
+    · rw [List.count_cons_self, List.count_cons_of_ne hne.symm.symm, Nat.succ_mul]; omega
 
 /-- Under `rule x = [!x]`: `p' = α q`, `q' = p + β q`. -/
 theorem parikh_step (S : DOL Bool) (x : Bool) (hx : S.rule x = [!x]) (s : List Bool) :
@@ -2979,7 +2979,7 @@ theorem sharp_implies_insertion (S : DOL Bool) (n : Nat) (w : List Bool)
     subst this; simp [DOL.derive] at hw; subst hw; omega
   by_cases h : ∃ x, (S.rule x).length = 1
   · obtain ⟨x, h1⟩ := h
-    obtain ⟨y, hy⟩ := List.length_eq_one.mp h1
+    obtain ⟨y, hy⟩ := List.length_eq_one_iff.mp h1
     rcases (show y = x ∨ y = !x by cases x <;> cases y <;> simp) with hyx | hyx <;> subst y
     · -- rule x = [x]: identical to the weak case (only uses |w| ≥ 2^n ≥ fib(n+1) bound)
       have hcount := count_derive_fixed S x hy n
@@ -3022,7 +3022,7 @@ theorem sharp_implies_insertion (S : DOL Bool) (n : Nat) (w : List Bool)
       | k + 2 =>
         rw [hk] at hcount
         have hcw : (S.start.count (!x)) * (k + 2) ^ n ≤ w.length :=
-          hcount ▸ List.count_le_length _ _
+          hcount ▸ List.count_le_length
         have h2n : 2 ^ n ≤ (k + 2) ^ n := Nat.pow_le_pow_left (by omega) n
         have hf := fib_le_two_pow n
         have : 1 * 2 ^ n ≤ S.start.count (!x) * (k + 2) ^ n := Nat.mul_le_mul hcs h2n
@@ -3096,7 +3096,7 @@ theorem sharp_implies_insertion (S : DOL Bool) (n : Nat) (w : List Bool)
           omega
       · have hall : ∀ a, (S.rule a).length = 1 := by
           intro a
-          have := List.length_pos.mpr (hne (!x))
+          have := List.length_pos_iff.mpr (hne (!x))
           rcases (show a = x ∨ a = !x by cases x <;> cases a <;> simp) with rfl | rfl
           · exact h1
           · omega
@@ -3104,7 +3104,7 @@ theorem sharp_implies_insertion (S : DOL Bool) (n : Nat) (w : List Bool)
         rw [hw] at this; omega
   · have hk : ∀ a, 2 ≤ (S.rule a).length := by
       intro a
-      have := List.length_pos.mpr (hne a)
+      have := List.length_pos_iff.mpr (hne a)
       have : (S.rule a).length ≠ 1 := fun h1 => h ⟨a, h1⟩
       omega
     have := length_derive_pow S hk n
@@ -3136,7 +3136,7 @@ theorem runs_ne_nil (x : Bool) (w : List Bool) : runs x w ≠ [] := by
 
 theorem runs_x_cons (x : Bool) (t : List Bool) :
     runs x (x :: t) = ((runs x t).headD 0 + 1) :: (runs x t).drop 1 := by
-  simp only [runs, if_true]
+  simp only [runs, ite_true]
   split
   · rename_i r rs h; rw [h]; rfl
   · rename_i h; exact absurd h (runs_ne_nil x t)
@@ -3281,7 +3281,7 @@ theorem adjust_spec (a b : Nat) (rs : List Nat) (h2 : 2 ≤ rs.length) :
             cases ss with
             | nil => simp at hq
             | cons u us =>
-              simp only [List.dropLast_cons₂, List.mem_cons] at hq i3
+              simp only [List.dropLast_cons_cons, List.mem_cons] at hq i3
               rcases hq with rfl | hq
               · omega
               · exact i3 q hq
@@ -3305,7 +3305,7 @@ theorem runs_length_pos_of_mem (x : Bool) (w : List Bool) (hm : (!x) ∈ w) :
         | cons r rs => exact ⟨r, rs, rfl⟩
       rw [hr] at this ⊢; simpa using this
     · rw [runs_notx_cons]
-      have := List.length_pos.mpr (runs_ne_nil x t)
+      have := List.length_pos_iff.mpr (runs_ne_nil x t)
       simp; omega
 
 /-- **Necessity.** An insertion system with a short axiom deriving `w` forces the criterion. -/
@@ -3360,7 +3360,7 @@ theorem adjust_shrinkL (n : Nat) (rs : List Nat) (h2 : 2 ≤ rs.length)
       | cons r'' rs'' =>
         have hr' : n ≤ r' := hinner r' (by simp)
         have := ih (by simp) (fun q hq => hinner q (by
-          simp only [List.drop_succ_cons, List.drop_zero, List.dropLast_cons₂, List.mem_cons] at hq ⊢
+          simp only [List.drop_succ_cons, List.drop_zero, List.dropLast_cons_cons, List.mem_cons] at hq ⊢
           exact Or.inr hq)) (by simpa using hr')
         simp only [shrinkL] at this ⊢
         rw [show adjust n 0 ((r - n) :: (r' - n) :: shrinkL n (r'' :: rs''))
@@ -3521,7 +3521,7 @@ theorem crit_imp_factor (n : Nat) (x : Bool) (w : List Bool) (hc : Crit n x w) :
   rw [fromRuns_runs] at huv
   refine ⟨u, List.replicate (r - n) x ++ v, ?_⟩
   have e : List.replicate r x = List.replicate n x ++ List.replicate (r - n) x := by
-    rw [List.append_replicate_replicate]; congr 1; omega
+    rw [List.replicate_append_replicate]; congr 1; omega
   rw [huv, e, List.append_assoc, List.append_assoc, List.append_assoc]
 
 /-! #### the Fibonacci iterates avoid `bb` and `aaa` -/
@@ -3621,13 +3621,13 @@ theorem fib_not_crit (n : Nat) (hn : 3 ≤ n) (x : Bool) : ¬ Crit n x (fibS.der
   · -- a^n with n ≥ 3 contains aaa
     have e : List.replicate n false = [false, false, false] ++ List.replicate (n - 3) false := by
       show List.replicate n false = List.replicate 3 false ++ List.replicate (n - 3) false
-      rw [List.append_replicate_replicate]; congr 1; omega
+      rw [List.replicate_append_replicate]; congr 1; omega
     have : fibS.derive n = u ++ [false, false, false] ++ (List.replicate (n - 3) false ++ v) := by
       rw [huv, e]; simp [List.append_assoc]
     rw [this, noaaa_factor] at h2; exact Bool.noConfusion h2
   · have e : List.replicate n true = [true, true] ++ List.replicate (n - 2) true := by
       show List.replicate n true = List.replicate 2 true ++ List.replicate (n - 2) true
-      rw [List.append_replicate_replicate]; congr 1; omega
+      rw [List.replicate_append_replicate]; congr 1; omega
     have : fibS.derive n = u ++ [true, true] ++ (List.replicate (n - 2) true ++ v) := by
       rw [huv, e]; simp [List.append_assoc]
     rw [this, nobb_factor] at h1; exact Bool.noConfusion h1
@@ -3686,7 +3686,7 @@ theorem dbl_step_b (m : Nat) : dblS.step (List.replicate m true) = List.replicat
   | zero => rfl
   | succ m ih =>
     rw [List.replicate_succ, step_cons, ih, show 2 * (m + 1) = 2 + 2 * m by omega,
-      ← List.append_replicate_replicate]
+      ← List.replicate_append_replicate]
     rfl
 
 theorem dbl_closed (k : Nat) :
@@ -3732,7 +3732,7 @@ theorem block_not_crit (n : Nat) (hn : 1 ≤ n) (x : Bool) (M N : Nat) (hN : 2 �
   have : 0 ∈ ((M :: List.replicate N 0).drop 1).dropLast := by
     simp only [List.drop_succ_cons, List.drop_zero]
     obtain ⟨N', rfl⟩ : ∃ N', N = N' + 2 := ⟨N - 2, by omega⟩
-    rw [List.replicate_succ, List.replicate_succ, List.dropLast_cons₂]; simp
+    rw [List.replicate_succ, List.replicate_succ, List.dropLast_cons_cons]; simp
   have := hinner 0 this; omega
 
 theorem block_not_crit' (n : Nat) (hn : 1 ≤ n) (x : Bool) (M N : Nat) (hM : 2 ≤ M) :
@@ -3745,7 +3745,7 @@ theorem block_not_crit' (n : Nat) (hn : 1 ≤ n) (x : Bool) (M N : Nat) (hM : 2 
     simp only [List.replicate_succ, List.cons_append, List.drop_succ_cons, List.drop_zero]
     cases M' with
     | zero => simp
-    | succ M'' => rw [List.replicate_succ, List.cons_append, List.dropLast_cons₂]; simp
+    | succ M'' => rw [List.replicate_succ, List.cons_append, List.dropLast_cons_cons]; simp
   have := hinner 0 this; omega
 
 theorem dbl_not_crit (n : Nat) (hn : 2 ≤ n) (x : Bool) : ¬ Crit n x (dblS.derive n) := by
@@ -3770,14 +3770,14 @@ theorem dbl_length (n : Nat) :
   obtain ⟨d1, d2⟩ := dbl_closed (n / 2)
   rcases Nat.mod_two_eq_zero_or_one n with he | ho
   · rw [show 2 * (n / 2) = n by omega] at d1
-    rw [d1, if_pos he]; simp; omega
+    rw [d1, ite_eq_left he]; simp; omega
   · rw [show 2 * (n / 2) + 1 = n by omega] at d2
-    rw [d2, if_neg (by omega)]; simp [Nat.pow_succ]; omega
+    rw [d2, ite_eq_right (by omega)]; simp [Nat.pow_succ]; omega
 
 theorem dbl_both (n : Nat) : ∀ c, c ∈ dblS.derive n := by
   obtain ⟨d1, d2⟩ := dbl_closed (n / 2)
-  have hp : 1 ≤ 2 ^ (n / 2) := Nat.pos_pow_of_pos _ (by omega)
-  have hp' : 1 ≤ 2 ^ (n / 2 + 1) := Nat.pos_pow_of_pos _ (by omega)
+  have hp : 1 ≤ 2 ^ (n / 2) := Nat.pow_pos (by omega)
+  have hp' : 1 ≤ 2 ^ (n / 2 + 1) := Nat.pow_pos (by omega)
   intro c
   rcases Nat.mod_two_eq_zero_or_one n with he | ho
   · rw [show 2 * (n / 2) = n by omega] at d1; rw [d1]
@@ -3817,12 +3817,12 @@ theorem sharpT_eq (n : Nat) :
     sharpT n = (if n ≤ 7 then fib (n + 1) else Dn n) := by
   unfold sharpT
   by_cases h : n ≤ 7
-  · rw [if_pos h]
+  · rw [ite_eq_left h]
     apply Nat.min_eq_left
     show fib (n + 1) ≤ Dn n
     rcases (show n = 0 ∨ n = 1 ∨ n = 2 ∨ n = 3 ∨ n = 4 ∨ n = 5 ∨ n = 6 ∨ n = 7 by omega)
       with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
     exact Nat.min_eq_right (Dn_le_fib n (by omega))
 
 /-- **Sharpness for all `n ≥ 2`** (proved). Some word of length exactly `T(n)` is derived in
@@ -3834,7 +3834,7 @@ theorem sharp_witness (n : Nat) (hn : 2 ≤ n) :
       ¬ Crit n false w ∧ ¬ Crit n true w := by
   rw [sharpT_eq]
   by_cases h : n ≤ 7
-  · rw [if_pos h]
+  · rw [ite_eq_left h]
     refine ⟨fibS, fibS.derive n, by decide, rfl, ?_, fib_both n hn, fib_length n, ?_, ?_⟩
     · rw [fib_length]
       show 1 < fib (n + 1)
@@ -3846,7 +3846,7 @@ theorem sharp_witness (n : Nat) (hn : 2 ≤ n) :
     · rcases (show n = 2 ∨ 3 ≤ n by omega) with rfl | h3
       · decide
       · exact fib_not_crit n h3 true
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
     refine ⟨dblS, dblS.derive n, by decide, rfl, ?_, dbl_both n, dbl_length n,
       dbl_not_crit n hn false, dbl_not_crit n hn true⟩
     rw [dbl_length]

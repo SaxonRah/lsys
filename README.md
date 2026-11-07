@@ -5,7 +5,7 @@ that derives `w` in exactly `n` steps. This repository contains an exact search 
 problem, the theorems around it, and a Lean 4 formalization of all of them, together with a
 short paper whose statements are machine-aligned to the formalization.
 
-Everything is checked in **Lean 4.15, core library only** (no Mathlib), with **no `sorry`**.
+Everything is checked in **Lean 4.36.0-rc2, core library only** (no Mathlib), with **no `sorry`** and no deprecation warnings. (The historical `LSys_1` … `LSys_Epsilon` files were written against Lean 4.15 and are kept as-is; `LSys_Zeta.lean` and `paper/Paper.lean` are the maintained files.)
 
 ## What is proved
 
