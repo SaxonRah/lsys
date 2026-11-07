@@ -1,6 +1,6 @@
 # Inverse L-system inference — results
 
-All theorems are machine-checked in `LSys.lean` (Lean 4.15, core library only, no `sorry`).
+All theorems are machine-checked in `LSys.lean` (Lean 4.36.0-rc2, core library only, no `sorry`).
 Python prototypes: `lsys_infer.py` (mutable search), `lsys_pure.py` (pure transcription),
 `brute_check.py` (property test against brute force), `explore.py` / `conj.py` (data for the conjecture).
 
