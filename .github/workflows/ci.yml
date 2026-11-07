@@ -1,0 +1,31 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  lean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install elan (toolchain from lean-toolchain)
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/latest/download/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Build (LSys, Bounds, Paper, lsys exe)
+        run: lake build
+      - name: No sorry, no axioms beyond the standard three
+        run: |
+          ! grep -nw "sorry" LSys.lean LSys/*.lean paper/Paper.lean Main.lean | grep -vi 'no `sorry`'
+          lake env lean test/Axioms.lean
+      - name: Randomized search-vs-spec check in Lean
+        run: lake env lean --run test/RandCheck.lean | tee /dev/stderr | grep -Eq "mismatches:? 0"
+      - name: Python search vs brute force
+        run: python3 scripts/brute_check.py | tee /dev/stderr | grep -Eq "mismatches:? 0"
+      - name: Python search vs Lean search
+        run: python3 scripts/crosscheck.py
+      - name: Paper/formalization alignment (PFA)
+        run: |
+          git clone --depth 1 https://github.com/SaxonRah/paper-formal-alignment ../pfa
+          cd paper
+          python3 ../../pfa/pfa/scripts/check_alignment.py paper.tex --lean Paper.lean \
+            --namespace LSys --lake-project .. --json pfa.json | tee checker_output.txt
+          git diff --exit-code checker_output.txt pfa.json

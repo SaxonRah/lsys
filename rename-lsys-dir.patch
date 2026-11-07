@@ -1,0 +1,153 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 9c1b9c6..03db864 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -19,9 +19,9 @@ jobs:
+       - name: Randomized search-vs-spec check in Lean
+         run: lake env lean --run test/RandCheck.lean | tee /dev/stderr | grep -Eq "mismatches:? 0"
+       - name: Python search vs brute force
+-        run: python3 lsys/brute_check.py | tee /dev/stderr | grep -Eq "mismatches:? 0"
++        run: python3 scripts/brute_check.py | tee /dev/stderr | grep -Eq "mismatches:? 0"
+       - name: Python search vs Lean search
+-        run: python3 lsys/crosscheck.py
++        run: python3 scripts/crosscheck.py
+       - name: Paper/formalization alignment (PFA)
+         run: |
+           git clone --depth 1 https://github.com/SaxonRah/paper-formal-alignment ../pfa
+diff --git a/Main.lean b/Main.lean
+index 2002bd7..1bdcad5 100644
+--- a/Main.lean
++++ b/Main.lean
+@@ -4,7 +4,7 @@ Command-line front end for the verified search `LSys.infer`.
+   lake exe lsys WORD N [--max-axiom A] [--max-rule R] [--empty] [--hidden H] [--json]
+ 
+ The alphabet is the sorted set of characters of WORD, plus H hidden symbols drawn from
+-`XYZUVW` (the same convention as `lsys/lsys_infer.py`). Solutions are printed in canonical
++`XYZUVW` (the same convention as `scripts/lsys_infer.py`). Solutions are printed in canonical
+ form (`canon`: rules of symbols never rewritten are dropped), one per line, sorted, so the
+ output is directly comparable with the Python search.
+ -/
+diff --git a/README.md b/README.md
+index 82b1eb8..8f307c8 100644
+--- a/README.md
++++ b/README.md
+@@ -36,7 +36,7 @@ exception for `n ≤ 7` and `a^(2^k) b^(2^k)` for `n ≥ 8`.
+ 
+ What is *not* known: any structural description of the binary case for `|w| ≥ T(n)`, anything
+ for `|Σ| ≥ 3` with `n > |Σ|`, and the complexity of minimum-size inference. One conjecture
+-(density of solvable words) is stated in `lsys/SUMMARY.md` and in the paper; a second
++(density of solvable words) is stated in `SUMMARY.md` and in the paper; a second
+ (bounded axiom length for non-insertion solutions) is refuted there.
+ 
+ ## Layout
+@@ -56,14 +56,14 @@ test/
+   RandCheck.lean     in-Lean randomized check of `infer` against `sol`
+   Axioms.lean        `#print axioms` guards for the headline theorems
+   instances.json     the fixed instance set for the Python-vs-Lean cross-check
+-lsys/
++scripts/
+   lsys_infer.py      the search, mutable prototype
+   lsys_pure.py       the same search as pure functions (what the Lean `search` transcribes)
+   brute_check.py     property test: search == brute-force enumeration
+   crosscheck.py      Python search == Lean search on test/instances.json
+   explore.py, conj.py   data: solvable binary words for n = 3..6; the run-length criterion vs search
+-  SUMMARY.md         results, open problems, conjectures
+-  history/           LSys_1 … LSys_Epsilon, the earlier versions (Lean 4.15; not built)
++SUMMARY.md           results, open problems, conjectures
++history/             LSys_1 … LSys_Epsilon, the earlier versions (Lean 4.15; not built)
+ .github/workflows/ci.yml
+ ```
+ 
+@@ -89,9 +89,9 @@ lake exe lsys aaaaabbbbbbbbbbbbbbbb 4 --max-axiom 6 --max-rule 21   # the Conjec
+ Python (no dependencies):
+ 
+ ```sh
+-python3 lsys/lsys_infer.py abaababaabaab 5     # same search, in Python
+-python3 lsys/brute_check.py                     # ~600 random instances vs brute force, expects 0 mismatches
+-python3 lsys/crosscheck.py                      # 200 fixed instances, Python vs `lake exe lsys`, expects 0 mismatches
++python3 scripts/lsys_infer.py abaababaabaab 5     # same search, in Python
++python3 scripts/brute_check.py                     # ~600 random instances vs brute force, expects 0 mismatches
++python3 scripts/crosscheck.py                      # 200 fixed instances, Python vs `lake exe lsys`, expects 0 mismatches
+ ```
+ 
+ Paper and alignment check (needs `pdflatex` and
+diff --git a/lsys/SUMMARY.md b/SUMMARY.md
+similarity index 100%
+rename from lsys/SUMMARY.md
+rename to SUMMARY.md
+diff --git a/lsys/history/LSys_1.lean b/history/LSys_1.lean
+similarity index 100%
+rename from lsys/history/LSys_1.lean
+rename to history/LSys_1.lean
+diff --git a/lsys/history/LSys_2.lean b/history/LSys_2.lean
+similarity index 100%
+rename from lsys/history/LSys_2.lean
+rename to history/LSys_2.lean
+diff --git a/lsys/history/LSys_3.lean b/history/LSys_3.lean
+similarity index 100%
+rename from lsys/history/LSys_3.lean
+rename to history/LSys_3.lean
+diff --git a/lsys/history/LSys_4.lean b/history/LSys_4.lean
+similarity index 100%
+rename from lsys/history/LSys_4.lean
+rename to history/LSys_4.lean
+diff --git a/lsys/history/LSys_5.lean b/history/LSys_5.lean
+similarity index 100%
+rename from lsys/history/LSys_5.lean
+rename to history/LSys_5.lean
+diff --git a/lsys/history/LSys_Alpha.lean b/history/LSys_Alpha.lean
+similarity index 100%
+rename from lsys/history/LSys_Alpha.lean
+rename to history/LSys_Alpha.lean
+diff --git a/lsys/history/LSys_Beta.lean b/history/LSys_Beta.lean
+similarity index 100%
+rename from lsys/history/LSys_Beta.lean
+rename to history/LSys_Beta.lean
+diff --git a/lsys/history/LSys_Delta.lean b/history/LSys_Delta.lean
+similarity index 100%
+rename from lsys/history/LSys_Delta.lean
+rename to history/LSys_Delta.lean
+diff --git a/lsys/history/LSys_Epsilon.lean b/history/LSys_Epsilon.lean
+similarity index 100%
+rename from lsys/history/LSys_Epsilon.lean
+rename to history/LSys_Epsilon.lean
+diff --git a/lsys/history/LSys_Gamma.lean b/history/LSys_Gamma.lean
+similarity index 100%
+rename from lsys/history/LSys_Gamma.lean
+rename to history/LSys_Gamma.lean
+diff --git a/lsys/brute_check.py b/scripts/brute_check.py
+similarity index 100%
+rename from lsys/brute_check.py
+rename to scripts/brute_check.py
+diff --git a/lsys/conj.py b/scripts/conj.py
+similarity index 100%
+rename from lsys/conj.py
+rename to scripts/conj.py
+diff --git a/lsys/crosscheck.py b/scripts/crosscheck.py
+similarity index 96%
+rename from lsys/crosscheck.py
+rename to scripts/crosscheck.py
+index 5743962..8774471 100644
+--- a/lsys/crosscheck.py
++++ b/scripts/crosscheck.py
+@@ -1,7 +1,7 @@
+ """Python-vs-Lean parity test: run `lsys_infer.infer` and the compiled Lean search
+ (`lake exe lsys --json`) on the same instances and compare canonical solution sets.
+ 
+-    python3 lsys/crosscheck.py [--gen N --seed S]   # default: use test/instances.json
++    python3 scripts/crosscheck.py [--gen N --seed S]   # default: use test/instances.json
+ Expects 0 mismatches. Requires `lake build` to have produced .lake/build/bin/lsys.
+ """
+ import json, os, random, subprocess, sys
+diff --git a/lsys/explore.py b/scripts/explore.py
+similarity index 100%
+rename from lsys/explore.py
+rename to scripts/explore.py
+diff --git a/lsys/lsys_infer.py b/scripts/lsys_infer.py
+similarity index 100%
+rename from lsys/lsys_infer.py
+rename to scripts/lsys_infer.py
+diff --git a/lsys/lsys_pure.py b/scripts/lsys_pure.py
+similarity index 100%
+rename from lsys/lsys_pure.py
+rename to scripts/lsys_pure.py

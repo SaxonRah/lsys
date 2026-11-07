@@ -1,7 +1,7 @@
 """Python-vs-Lean parity test: run `lsys_infer.infer` and the compiled Lean search
 (`lake exe lsys --json`) on the same instances and compare canonical solution sets.
 
-    python3 lsys/crosscheck.py [--gen N --seed S]   # default: use test/instances.json
+    python3 scripts/crosscheck.py [--gen N --seed S]   # default: use test/instances.json
 Expects 0 mismatches. Requires `lake build` to have produced .lake/build/bin/lsys.
 """
 import json, os, random, subprocess, sys

@@ -4,7 +4,7 @@ Command-line front end for the verified search `LSys.infer`.
   lake exe lsys WORD N [--max-axiom A] [--max-rule R] [--empty] [--hidden H] [--json]
 
 The alphabet is the sorted set of characters of WORD, plus H hidden symbols drawn from
-`XYZUVW` (the same convention as `lsys/lsys_infer.py`). Solutions are printed in canonical
+`XYZUVW` (the same convention as `scripts/lsys_infer.py`). Solutions are printed in canonical
 form (`canon`: rules of symbols never rewritten are dropped), one per line, sorted, so the
 output is directly comparable with the Python search.
 -/

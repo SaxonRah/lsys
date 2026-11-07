@@ -36,7 +36,7 @@ exception for `n ≤ 7` and `a^(2^k) b^(2^k)` for `n ≥ 8`.
 
 What is *not* known: any structural description of the binary case for `|w| ≥ T(n)`, anything
 for `|Σ| ≥ 3` with `n > |Σ|`, and the complexity of minimum-size inference. One conjecture
-(density of solvable words) is stated in `lsys/SUMMARY.md` and in the paper; a second
+(density of solvable words) is stated in `SUMMARY.md` and in the paper; a second
 (bounded axiom length for non-insertion solutions) is refuted there.
 
 ## Layout
@@ -56,14 +56,14 @@ test/
   RandCheck.lean     in-Lean randomized check of `infer` against `sol`
   Axioms.lean        `#print axioms` guards for the headline theorems
   instances.json     the fixed instance set for the Python-vs-Lean cross-check
-lsys/
+scripts/
   lsys_infer.py      the search, mutable prototype
   lsys_pure.py       the same search as pure functions (what the Lean `search` transcribes)
   brute_check.py     property test: search == brute-force enumeration
   crosscheck.py      Python search == Lean search on test/instances.json
   explore.py, conj.py   data: solvable binary words for n = 3..6; the run-length criterion vs search
-  SUMMARY.md         results, open problems, conjectures
-  history/           LSys_1 … LSys_Epsilon, the earlier versions (Lean 4.15; not built)
+SUMMARY.md           results, open problems, conjectures
+history/             LSys_1 … LSys_Epsilon, the earlier versions (Lean 4.15; not built)
 .github/workflows/ci.yml
 ```
 
@@ -89,9 +89,9 @@ lake exe lsys aaaaabbbbbbbbbbbbbbbb 4 --max-axiom 6 --max-rule 21   # the Conjec
 Python (no dependencies):
 
 ```sh
-python3 lsys/lsys_infer.py abaababaabaab 5     # same search, in Python
-python3 lsys/brute_check.py                     # ~600 random instances vs brute force, expects 0 mismatches
-python3 lsys/crosscheck.py                      # 200 fixed instances, Python vs `lake exe lsys`, expects 0 mismatches
+python3 scripts/lsys_infer.py abaababaabaab 5     # same search, in Python
+python3 scripts/brute_check.py                     # ~600 random instances vs brute force, expects 0 mismatches
+python3 scripts/crosscheck.py                      # 200 fixed instances, Python vs `lake exe lsys`, expects 0 mismatches
 ```
 
 Paper and alignment check (needs `pdflatex` and
